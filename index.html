@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>한글 타자 디펜스</title>
+<style>
+  :root {
+    --bg: #07080d;
+    --bg2: #0c0f1a;
+    --neon: #00f0ff;
+    --neon2: #ff2bd6;
+    --neon3: #b6ff3b;
+    --txt: #e7ecff;
+    --dim: #5b6480;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: radial-gradient(120% 120% at 50% -10%, var(--bg2), var(--bg) 60%);
+    color: var(--txt);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #wrap {
+    position: relative; width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage {
+    position: relative;
+    width: min(900px, 96vw);
+    height: min(660px, 94vh);
+    background: linear-gradient(180deg, rgba(0,240,255,0.03), rgba(255,43,214,0.03));
+    border: 1px solid rgba(0,240,255,0.25);
+    border-radius: 16px;
+    box-shadow: 0 0 40px rgba(0,240,255,0.12), inset 0 0 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; font-size: 14px; letter-spacing: 0.5px;
+    text-shadow: 0 0 8px rgba(0,240,255,0.5); pointer-events: none;
+  }
+  .hud-item b { color: var(--neon); font-variant-numeric: tabular-nums; }
+  #lvlTag { color: var(--neon3); }
+
+  /* 조합 상태 표시 */
+  #combo {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 188px; font-size: 15px; letter-spacing: 1px;
+    color: var(--neon2); text-shadow: 0 0 10px rgba(255,43,214,0.6);
+    pointer-events: none; min-height: 22px;
+  }
+  #combo b { color: #ff8fe6; }
+
+  /* 입력창 */
+  #inputBar {
+    position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+    width: 78%; max-width: 480px; display: flex; gap: 10px;
+  }
+  #typed {
+    flex: 1; background: rgba(0,0,0,0.55);
+    border: 1.5px solid var(--neon); border-radius: 10px; color: var(--neon);
+    font-size: 22px; font-weight: 700; text-align: center; letter-spacing: 2px;
+    padding: 9px 14px; outline: none;
+    box-shadow: 0 0 18px rgba(0,240,255,0.35); caret-color: var(--neon2);
+  }
+  #typed::placeholder { color: var(--dim); font-weight: 400; letter-spacing: 1px; }
+
+  /* 카드 필드 */
+  #cards {
+    position: absolute; left: 0; right: 0; bottom: 18px;
+    display: flex; justify-content: center; gap: 10px;
+    padding: 0 14px; flex-wrap: wrap;
+  }
+  .card {
+    position: relative; min-width: 84px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 10px 12px 8px; border-radius: 12px;
+    background: rgba(0,240,255,0.05);
+    border: 1.5px solid rgba(0,240,255,0.35);
+    transition: transform .1s, box-shadow .1s, border-color .1s;
+  }
+  .card .w { font-size: 18px; font-weight: 800; color: var(--txt); letter-spacing: 1px; }
+  .card .t { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
+  .card.adj {
+    background: rgba(255,43,214,0.07);
+    border-color: rgba(255,43,214,0.5);
+  }
+  .card.adj .w { color: #ff8fe6; }
+  .card.adj .t { color: #c95fb0; }
+  .card.match { transform: translateY(-6px); box-shadow: 0 0 16px rgba(0,240,255,0.5); border-color: var(--neon); }
+  .card.adj.match { box-shadow: 0 0 16px rgba(255,43,214,0.6); border-color: var(--neon2); }
+  .card.charged { border-color: var(--neon2); box-shadow: 0 0 20px rgba(255,43,214,0.7); }
+
+  /* 오버레이 */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: rgba(5,6,12,0.85); backdrop-filter: blur(3px); z-index: 5;
+    text-align: center; padding: 24px;
+  }
+  .overlay h1 {
+    font-size: 36px; letter-spacing: 4px; font-weight: 800;
+    background: linear-gradient(90deg, var(--neon), var(--neon2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 30px rgba(0,240,255,0.3);
+  }
+  .overlay p { color: var(--dim); font-size: 14px; line-height: 1.7; max-width: 480px; }
+  .overlay .big { color: var(--txt); font-size: 16px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .legend span { font-size: 13px; color: var(--dim); }
+  .legend b { color: var(--neon3); }
+  .btn {
+    margin-top: 8px; cursor: pointer; border: 1.5px solid var(--neon);
+    background: rgba(0,240,255,0.08); color: var(--neon);
+    font-size: 16px; font-weight: 700; letter-spacing: 1px;
+    padding: 12px 32px; border-radius: 10px; transition: all .15s;
+    box-shadow: 0 0 18px rgba(0,240,255,0.25);
+  }
+  .btn:hover { background: rgba(0,240,255,0.18); transform: translateY(-1px); }
+  .hidden { display: none !important; }
+  .kbd { color: var(--neon3); font-weight: 700; }
+  .pink { color: var(--neon2); font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <div class="hud-item">SCORE <b id="score">0</b></div>
+      <div class="hud-item" id="lvlTag">LV <b id="level">1</b></div>
+      <div class="hud-item">LIFE <b id="life">5</b></div>
+    </div>
+
+    <div id="combo" class="hidden"></div>
+    <div id="inputBar" class="hidden">
+      <input id="typed" type="text" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" placeholder="아래 카드의 단어를 입력하세요" />
+    </div>
+    <div id="cards" class="hidden"></div>
+
+    <!-- 시작 화면 -->
+    <div id="startScreen" class="overlay">
+      <h1>한글 타자 디펜스</h1>
+      <p class="big">필드에 깔린 <span class="kbd">단어 카드</span> 중 하나를 타이핑하면<br/>
+         그 단어가 <span class="kbd">무기</span>가 되어 가장 가까운 적을 공격합니다.</p>
+      <p>가끔 <span class="pink">형용사 카드</span>가 등장해요. 형용사를 먼저 입력해 충전한 뒤<br/>
+         명사를 입력하면 <span class="pink">합성 무기</span>가 만들어집니다. (예: 강한 + 화살)</p>
+      <div class="legend">
+        <span><b>강한/육중한</b> 데미지↑</span>
+        <span><b>빠른/날랜</b> 속도↑</span>
+        <span><b>날카로운/꿰뚫는</b> 관통</span>
+      </div>
+      <button class="btn" id="startBtn">게임 시작</button>
+    </div>
+
+    <!-- 게임오버 -->
+    <div id="overScreen" class="overlay hidden">
+      <h1>GAME OVER</h1>
+      <p class="big">최종 점수 <span id="finalScore" class="kbd"></span> · 레벨 <span id="finalLevel" class="kbd"></span></p>
+      <p id="overStats"></p>
+      <button class="btn" id="retryBtn">다시 시작</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- 데이터 ----------
+  // 명사 = 무기. 각자 기본 스탯(데미지/속도/관통/광역)
+  const NOUNS = [
+    { w: "화살", dmg: 1, spd: 680, pierce: 0, aoe: 0, hue: 90 },
+    { w: "단검", dmg: 1, spd: 720, pierce: 0, aoe: 0, hue: 190 },
+    { w: "돌멩이", dmg: 2, spd: 420, pierce: 0, aoe: 0, hue: 40 },
+    { w: "도끼", dmg: 3, spd: 360, pierce: 0, aoe: 0, hue: 20 },
+    { w: "불꽃", dmg: 2, spd: 480, pierce: 0, aoe: 36, hue: 14 },
+    { w: "얼음", dmg: 2, spd: 460, pierce: 0, aoe: 30, hue: 200 },
+    { w: "번개", dmg: 2, spd: 820, pierce: 1, aoe: 0, hue: 280 },
+    { w: "폭탄", dmg: 4, spd: 320, pierce: 0, aoe: 60, hue: 350 },
+    { w: "창", dmg: 2, spd: 600, pierce: 1, aoe: 0, hue: 160 },
+    { w: "유성", dmg: 5, spd: 300, pierce: 1, aoe: 50, hue: 50 },
+  ];
+  // 형용사 = 수식어. 무기 스탯을 변형
+  const ADJ = [
+    { w: "강한", mod: { dmgMul: 2 }, hue: 350 },
+    { w: "육중한", mod: { dmgMul: 2.4, spdMul: 0.8 }, hue: 20 },
+    { w: "빠른", mod: { spdMul: 1.7 }, hue: 200 },
+    { w: "날랜", mod: { spdMul: 1.9, dmgMul: 0.9 }, hue: 180 },
+    { w: "날카로운", mod: { pierceAdd: 2 }, hue: 160 },
+    { w: "꿰뚫는", mod: { pierceAdd: 3 }, hue: 280 },
+    { w: "거대한", mod: { aoeAdd: 50, dmgMul: 1.3 }, hue: 300 },
+  ];
+
+  const SLOTS = 6;          // 카드 슬롯 수
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randi = (a, b) => Math.floor(rand(a, b + 1));
+  const pick = arr => arr[randi(0, arr.length - 1)];
+
+  // ---------- 캔버스 ----------
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  // ---------- 상태 ----------
+  const FLOOR_Y_RATIO = 0.72;
+  let state = "start";
+  let enemies = [], projectiles = [], particles = [];
+  let cards = [];                 // 필드 카드 [{type:'noun'|'adj', data}]
+  let charged = null;             // 충전된 형용사 모디파이어
+  let score = 0, level = 1, life = 5;
+  let killCount = 0, shotCount = 0, comboCount = 0;
+  let spawnTimer = 0, spawnInterval = 1700, lastTs = 0;
+
+  // ---------- 카드 ----------
+  function makeCard() {
+    // 레벨이 오를수록 형용사 등장 확률 증가(최대 35%)
+    const adjChance = Math.min(0.35, 0.08 + level * 0.03);
+    if (Math.random() < adjChance) return { type: "adj", data: pick(ADJ) };
+    return { type: "noun", data: pick(NOUNS) };
+  }
+  function initCards() {
+    cards = [];
+    for (let i = 0; i < SLOTS; i++) {
+      // 시작 시엔 명사 위주
+      cards.push(Math.random() < 0.12 ? { type: "adj", data: pick(ADJ) } : { type: "noun", data: pick(NOUNS) });
+    }
+    renderCards();
+  }
+  function renderCards() {
+    const el = document.getElementById("cards");
+    el.innerHTML = "";
+    cards.forEach((c, i) => {
+      const d = document.createElement("div");
+      d.className = "card" + (c.type === "adj" ? " adj" : "");
+      if (charged && c === charged.card) d.className += " charged";
+      d.dataset.idx = i;
+      const w = document.createElement("div"); w.className = "w"; w.textContent = c.data.w;
+      const t = document.createElement("div"); t.className = "t"; t.textContent = cardHint(c);
+      d.appendChild(w); d.appendChild(t);
+      el.appendChild(d);
+    });
+  }
+  function cardHint(c) {
+    if (c.type === "adj") {
+      const m = c.data.mod;
+      const tags = [];
+      if (m.dmgMul) tags.push(m.dmgMul >= 1 ? "데미지↑" : "데미지↓");
+      if (m.spdMul) tags.push(m.spdMul >= 1 ? "속도↑" : "속도↓");
+      if (m.pierceAdd) tags.push("관통");
+      if (m.aoeAdd) tags.push("광역↑");
+      return tags.join(" ");
+    }
+    const d = c.data;
+    const tags = [`DMG ${d.dmg}`];
+    if (d.pierce) tags.push("관통");
+    if (d.aoe) tags.push("광역");
+    return tags.join(" ");
+  }
+  function highlight(prefix) {
+    [...document.getElementById("cards").children].forEach(el => {
+      const c = cards[+el.dataset.idx];
+      const on = prefix && c.data.w.startsWith(prefix);
+      el.classList.toggle("match", !!on);
+    });
+  }
+  function consumeCard(idx) {
+    cards[idx] = makeCard();
+    renderCards();
+  }
+
+  // ---------- 적 ----------
+  function spawnEnemy() {
+    const hp = 1 + Math.floor(level / 2) + randi(0, 1);
+    const r = 16 + hp * 3;
+    enemies.push({
+      x: rand(r + 12, W - r - 12), y: -r, r,
+      hp, maxHp: hp,
+      speed: rand(20, 30) + level * 2.5,
+      shape: randi(0, 2),
+      hue: pick([190, 310, 90, 50, 280]),
+      wobble: rand(0, Math.PI * 2),
+    });
+  }
+  function nearestEnemy() {
+    // 바닥에 가장 임박한 적
+    let best = null, bestY = -Infinity;
+    for (const e of enemies) if (e.y > bestY) { bestY = e.y; best = e; }
+    return best;
+  }
+
+  // ---------- 발사 ----------
+  function fireWeapon(noun) {
+    const t = nearestEnemy();
+    shotCount++;
+    // 스탯 계산 (형용사 적용)
+    let dmg = noun.dmg, spd = noun.spd, pierce = noun.pierce, aoe = noun.aoe;
+    let label = noun.w, mixHue = noun.hue;
+    if (charged) {
+      const m = charged.mod.mod;
+      if (m.dmgMul) dmg = Math.round(dmg * m.dmgMul * 10) / 10;
+      if (m.spdMul) spd *= m.spdMul;
+      if (m.pierceAdd) pierce += m.pierceAdd;
+      if (m.aoeAdd) aoe += m.aoeAdd;
+      label = charged.mod.w + " " + noun.w;
+      mixHue = charged.mod.hue;
+      comboCount++;
+      charged = null;
+      showCombo("");
+    }
+    if (!t) { renderCards(); return; } // 적 없으면 무기는 소모되지만 불발
+    projectiles.push({
+      x: W / 2, y: H * FLOOR_Y_RATIO + 30,
+      target: t, speed: spd, dmg, pierce, aoe,
+      hitSet: new Set(), trail: [], hue: mixHue, label,
+    });
+  }
+
+  function showCombo(text) {
+    const el = document.getElementById("combo");
+    if (!text) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    el.classList.remove("hidden");
+    el.innerHTML = text;
+  }
+
+  function burst(x, y, hue, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(40, 230);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), age: 0, hue });
+    }
+  }
+
+  // ---------- 입력 ----------
+  const typedEl = document.getElementById("typed");
+
+  function tryMatch() {
+    const val = typedEl.value.trim();
+    if (!val) { highlight(""); return; }
+    highlight(val);
+    // 완전 일치 카드 찾기
+    const idx = cards.findIndex(c => c.data.w === val);
+    if (idx === -1) return;
+    const c = cards[idx];
+    if (c.type === "adj") {
+      // 형용사 충전
+      charged = { mod: c.data, card: c };
+      showCombo(`충전됨: <b>${c.data.w}</b> + ?  → 명사를 입력하세요`);
+      consumeCard(idx);
+    } else {
+      fireWeapon(c.data);
+      consumeCard(idx);
+    }
+    typedEl.value = "";
+    highlight("");
+  }
+  typedEl.addEventListener("input", tryMatch);
+  typedEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { tryMatch(); typedEl.value = ""; highlight(""); }
+    if (e.key === "Escape") { // 충전 취소
+      if (charged) { charged = null; showCombo(""); renderCards(); }
+      typedEl.value = ""; highlight("");
+    }
+  });
+
+  // ---------- 업데이트 ----------
+  function update(dt) {
+    spawnTimer += dt * 1000;
+    if (spawnTimer >= spawnInterval) { spawnTimer = 0; spawnEnemy(); }
+
+    const floorY = H * FLOOR_Y_RATIO;
+    for (const e of enemies) {
+      e.y += e.speed * dt; e.wobble += dt * 2;
+      if (e.y - e.r >= floorY) {
+        e.dead = true; life--; burst(e.x, floorY, 0, 18); updateHUD();
+        if (life <= 0) { gameOver(); return; }
+      }
+    }
+
+    for (const p of projectiles) {
+      let t = p.target;
+      if (!t || t.dead) { t = nearestEnemy(); p.target = t; }
+      if (!t) { p.y -= p.speed * dt; if (p.y < -20) p.dead = true; continue; }
+      const dx = t.x - p.x, dy = t.y - p.y, dist = Math.hypot(dx, dy) || 1;
+      p.x += dx / dist * p.speed * dt; p.y += dy / dist * p.speed * dt;
+      p.trail.push({ x: p.x, y: p.y }); if (p.trail.length > 9) p.trail.shift();
+      if (dist < t.r + 6) hitEnemy(p, t);
+    }
+
+    for (const pt of particles) {
+      pt.age += dt; pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vy += 240 * dt;
+      if (pt.age >= pt.life) pt.dead = true;
+    }
+
+    enemies = enemies.filter(e => !e.dead);
+    projectiles = projectiles.filter(p => !p.dead);
+    particles = particles.filter(p => !p.dead);
+  }
+
+  function hitEnemy(p, t) {
+    if (p.hitSet.has(t)) return;
+    p.hitSet.add(t);
+    damage(t, p.dmg, p.hue);
+    // 광역
+    if (p.aoe > 0) {
+      for (const e of enemies) {
+        if (e === t || e.dead) continue;
+        if (Math.hypot(e.x - t.x, e.y - t.y) <= p.aoe + e.r) {
+          damage(e, Math.max(1, Math.round(p.dmg * 0.6)), p.hue);
+        }
+      }
+      burst(t.x, t.y, p.hue, 18);
+    }
+    // 관통: 남은 횟수 있으면 다음 타깃으로
+    if (p.pierce > 0) { p.pierce--; p.target = null; }
+    else p.dead = true;
+  }
+  function damage(e, dmg, hue) {
+    e.hp -= dmg; burst(e.x, e.y, hue, 8);
+    if (e.hp <= 0) {
+      e.dead = true; killCount++; score += 10 + level * 2 + e.maxHp * 2;
+      burst(e.x, e.y, e.hue, 22); updateHUD(); maybeLevelUp();
+    }
+  }
+  function maybeLevelUp() {
+    const nl = 1 + Math.floor(killCount / 8);
+    if (nl > level) { level = nl; spawnInterval = Math.max(650, 1700 - level * 95); updateHUD(); }
+  }
+
+  // ---------- 렌더 ----------
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    // 그리드
+    ctx.save(); ctx.globalAlpha = 0.12; ctx.strokeStyle = "#1a6cff"; ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.restore();
+
+    const floorY = H * FLOOR_Y_RATIO;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,43,214,0.5)"; ctx.lineWidth = 2;
+    ctx.shadowColor = "rgba(255,43,214,0.8)"; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(W, floorY); ctx.stroke();
+    ctx.restore();
+
+    // 포대
+    const cx = W / 2, cy = floorY + 18;
+    ctx.save();
+    ctx.fillStyle = "#00f0ff"; ctx.shadowColor = "#00f0ff"; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.moveTo(cx - 16, cy + 14); ctx.lineTo(cx + 16, cy + 14); ctx.lineTo(cx, cy - 16); ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    for (const e of enemies) drawEnemy(e);
+
+    for (const p of projectiles) {
+      ctx.save();
+      ctx.strokeStyle = `hsla(${p.hue},100%,65%,0.5)`; ctx.lineWidth = 3;
+      ctx.beginPath(); p.trail.forEach((t, i) => i ? ctx.lineTo(t.x, t.y) : ctx.moveTo(t.x, t.y)); ctx.stroke();
+      ctx.fillStyle = `hsl(${p.hue},100%,65%)`; ctx.shadowColor = `hsl(${p.hue},100%,65%)`; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // 무기 라벨
+      ctx.save();
+      ctx.font = "700 12px Pretendard, system-ui, sans-serif"; ctx.textAlign = "center";
+      ctx.fillStyle = `hsl(${p.hue},100%,80%)`;
+      ctx.fillText(p.label, p.x, p.y - 12);
+      ctx.restore();
+    }
+
+    for (const pt of particles) {
+      const a = 1 - pt.age / pt.life;
+      ctx.save(); ctx.globalAlpha = Math.max(0, a);
+      ctx.fillStyle = `hsl(${pt.hue},100%,65%)`;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+  }
+  function drawEnemy(e) {
+    const { x, y, r, hue } = e, wob = Math.sin(e.wobble) * 2;
+    ctx.save(); ctx.translate(x, y + wob);
+    ctx.shadowColor = `hsl(${hue},100%,60%)`; ctx.shadowBlur = 16;
+    ctx.strokeStyle = `hsl(${hue},100%,65%)`; ctx.fillStyle = `hsla(${hue},100%,55%,0.12)`; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    if (e.shape === 0) ctx.arc(0, 0, r, 0, Math.PI * 2);
+    else if (e.shape === 1) { ctx.moveTo(0, -r); ctx.lineTo(r * 0.9, r * 0.7); ctx.lineTo(-r * 0.9, r * 0.7); ctx.closePath(); }
+    else ctx.rect(-r * 0.8, -r * 0.8, r * 1.6, r * 1.6);
+    ctx.fill(); ctx.stroke(); ctx.restore();
+    // HP
+    if (e.maxHp > 1) {
+      const bw = r * 1.6, bh = 4, bx = x - bw / 2, by = y + wob - r - 12;
+      ctx.save(); ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = "#b6ff3b"; ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), bh); ctx.restore();
+    }
+  }
+
+  // ---------- HUD/흐름 ----------
+  const $score = document.getElementById("score"), $level = document.getElementById("level"), $life = document.getElementById("life");
+  function updateHUD() { $score.textContent = score; $level.textContent = level; $life.textContent = Math.max(0, life); }
+
+  function loop(ts) {
+    if (state !== "playing") return;
+    const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0); lastTs = ts;
+    update(dt); if (state !== "playing") return; draw();
+    requestAnimationFrame(loop);
+  }
+  function startGame() {
+    resize();
+    enemies = []; projectiles = []; particles = []; charged = null;
+    score = 0; level = 1; life = 5; killCount = 0; shotCount = 0; comboCount = 0;
+    spawnTimer = 0; spawnInterval = 1700; state = "playing";
+    updateHUD(); showCombo("");
+    document.getElementById("startScreen").classList.add("hidden");
+    document.getElementById("overScreen").classList.add("hidden");
+    document.getElementById("inputBar").classList.remove("hidden");
+    document.getElementById("cards").classList.remove("hidden");
+    typedEl.value = ""; initCards(); spawnEnemy();
+    typedEl.focus(); lastTs = performance.now(); requestAnimationFrame(loop);
+  }
+  function gameOver() {
+    state = "over";
+    document.getElementById("finalScore").textContent = score;
+    document.getElementById("finalLevel").textContent = level;
+    document.getElementById("overStats").textContent =
+      `처치 ${killCount} · 발사 ${shotCount} · 합성 무기 ${comboCount}`;
+    document.getElementById("inputBar").classList.add("hidden");
+    document.getElementById("cards").classList.add("hidden");
+    showCombo("");
+    document.getElementById("overScreen").classList.remove("hidden");
+  }
+
+  document.getElementById("startBtn").addEventListener("click", startGame);
+  document.getElementById("retryBtn").addEventListener("click", startGame);
+  document.getElementById("stage").addEventListener("click", () => { if (state === "playing") typedEl.focus(); });
+
+  resize();
+})();
+</script>
+</body>
+</html>
