@@ -466,11 +466,23 @@
     el.classList.remove("hidden"); el.innerHTML=`대기 형용사: <b>${pendingAdj.join(" + ")}</b> → 무기를 입력하세요`; }
 
   // ===== 도감 =====
+  function tierEffectText(e,t){
+    const E=ELEMENTS[e], dm=Math.round(E.dmgMul*TIER_DMG[t]*100)/100, aoe=TIER_AOE[t], p=["데미지 ×"+dm];
+    if(E.effect==="burn") p.push("화상 "+(Math.round(1.6*TIER_DMG[t]*10)/10)+"/초");
+    else if(E.effect==="slow"){ const f=[0.6,0.4,0.0][t]; p.push(f===0?"빙결(완전정지)":"둔화 "+Math.round((1-f)*100)+"%"); if(t<2)p.push("젖은 적은 즉시 빙결"); }
+    else if(E.effect==="wet"){ p.push("젖음+넉백"); p.push("젖은 적: 얼음=빙결 / 번개=2배"); }
+    else if(E.effect==="earth") p.push("관통+"+(1+t)+" · 투사체 속도 -30%");
+    else if(E.effect==="chain") p.push("인접 "+(1+t)+"마리 연쇄 + 감전(스턴)");
+    if(aoe>0) p.push("착탄 광역 +"+aoe);
+    return p.join(" · ");
+  }
   function buildCatalog(){
     const wh=WEAPON_NAMES.map(n=>{const w=WEAPONS[n];return `<div class="cat-item"><div class="n" style="color:hsl(${w.hue},85%,70%)">${n}</div>
       <div class="d">데미지 ${w.dmg} · 초당 ${(1000/w.interval).toFixed(1)}발${w.pierce?` · 관통 ${w.pierce}`:""}${w.aoe?" · 광역":""}${w.scatter?" · 분산":""}${w.snipeTop?" · 맨위적":""}<br/>${w.hint}</div></div>`;}).join("");
-    const eh=ELEM_NAMES.map(e=>{const E=ELEMENTS[e];return `<div class="cat-item"><div class="n" style="color:hsl(${E.hue},90%,${E.light+10}%)">${E.tiers.join(" → ")}</div>
-      <div class="d">데미지 ×${E.dmgMul} · ${EFFECT_DESC[E.effect]}<br/>같은 원소 3번이면 다음 단계로 진화</div></div>`;}).join("");
+    const eh=ELEM_NAMES.map(e=>{const E=ELEMENTS[e];
+      const rows=E.tiers.map((tn,t)=>`<b style="color:hsl(${E.hue},90%,${E.light+12}%)">${t+1}단 ${tn}</b> — ${tierEffectText(e,t)}`).join("<br/>");
+      return `<div class="cat-item"><div class="n" style="color:hsl(${E.hue},90%,${E.light+10}%)">${E.tiers.join(" → ")}</div>
+      <div class="d">${rows}<br/><span style="opacity:.65">※ 같은 원소를 무기에 3번 넣으면 다음 단계로 진화</span></div></div>`;}).join("");
     const ah=ADJ_NAMES.map(n=>`<div class="cat-item"><div class="n" style="color:#c4ccff">${n}</div><div class="d">${adjHint(ADJ[n])}</div></div>`).join("");
     document.getElementById("catBody").innerHTML=
       `<div class="cat-sec"><h3 style="color:var(--neon)">무기 (장착·자동공격)</h3><div class="cat-grid">${wh}</div></div>
