@@ -81,7 +81,7 @@
     <h1>한글 타자 디펜스</h1>
     <p class="big">카드 단어를 입력하고 <span class="kbd">Enter</span>로 발동. 무기를 장착하면 자동으로 적을 공격해요.</p>
     <p><b style="color:#b9c4ff">형용사</b>는 <b>무기보다 먼저</b> 입력해야 적용(여러 개 가능). <span class="pink">원소</span>는 무기 <b>장착 후</b> 입력, 무기당 <b>1개</b>. 같은 원소 <span class="kbd">3번</span>이면 진화(불→화염→겁화).<br/>
-      강화는 무기에 저장, <b style="color:#ff8fe6">무기를 바꾸면 초기화</b>. 투사체는 기본 <b>직선</b>—<span style="color:#b9c4ff">유도의</span>를 넣어야 적을 따라갑니다.</p>
+      강화는 무기에 저장, <b style="color:#ff8fe6">무기를 바꾸면 초기화</b>. 투사체는 <b>직선</b>으로 날아가니 적의 위치를 노려서 발사돼요.</p>
     <div class="elegend">
       <span><b style="color:hsl(6,90%,58%)">불</b></span><span><b style="color:hsl(52,95%,55%)">번개</b></span>
       <span><b style="color:hsl(110,70%,50%)">대지</b></span><span><b style="color:hsl(188,90%,65%)">얼음</b></span><span><b style="color:hsl(225,90%,62%)">물</b></span>
@@ -116,10 +116,10 @@
   const WEAPONS = {
     "단검":   {dmg:2,   interval:300,  projSpeed:820,  pierce:0, aoe:0,  scatter:false, snipeTop:false, shape:"dagger", hue:190, hint:"빠른연사·단일"},
     "권총":   {dmg:4,   interval:560,  projSpeed:760,  pierce:0, aoe:0,  scatter:false, snipeTop:false, shape:"bullet", hue:200, hint:"균형·단일"},
-    "기관총": {dmg:0.5, interval:130,  projSpeed:700,  pierce:0, aoe:0,  scatter:true,  snipeTop:false, shape:"bullet", hue:170, hint:"초고속·분산·약함"},
+    "기관총": {dmg:0.5, interval:280,  projSpeed:700,  pierce:0, aoe:0,  scatter:true,  snipeTop:false, shape:"bullet", hue:170, hint:"분산·약함"},
     "활":     {dmg:6,   interval:950,  projSpeed:1200, pierce:0, aoe:0,  scatter:false, snipeTop:true,  shape:"arrow",  hue:95,  hint:"저격·맨위적"},
     "창":     {dmg:5,   interval:620,  projSpeed:760,  pierce:2, aoe:0,  scatter:false, snipeTop:false, shape:"spear",  hue:160, hint:"관통 라인"},
-    "도끼":   {dmg:11,  interval:1350, projSpeed:430,  pierce:0, aoe:66, scatter:false, snipeTop:false, shape:"axe",    hue:25,  hint:"광역·강타"},
+    "도끼":   {dmg:11,  interval:1350, projSpeed:720,  pierce:0, aoe:66, scatter:false, snipeTop:false, shape:"axe",    hue:25,  hint:"광역·강타"},
   };
   const WEAPON_NAMES=Object.keys(WEAPONS);
   const ELEMENTS = {
@@ -141,7 +141,6 @@
     "거대한": {aoeAdd:42,dmgMul:1.2},
     "이중의": {multishot:2},
     "정확한": {priorityBottom:true},
-    "유도의": {homing:true},
   };
   const ADJ_NAMES=Object.keys(ADJ);
   const adjHint=m=>{const t=[];
@@ -165,10 +164,18 @@
   let spawnTimer=0,spawnInterval=1300,fireTimer=0,lastTs=0;
 
   // ===== 카드 (좌:무기2 / 우:버프3) =====
-  function makeWeaponCard(){return{type:"weapon",name:pick(WEAPON_NAMES)};}
-  function makeBuffCard(){ if(Math.random()<0.55){const e=pick(ELEM_NAMES);return{type:"nature",name:e,elem:e};} return{type:"adj",name:pick(ADJ_NAMES)}; }
-  function initCards(){ cards=[makeWeaponCard(),makeWeaponCard(),makeBuffCard(),makeBuffCard(),makeBuffCard()]; renderCards(); }
-  function consumeCard(idx){ cards[idx]= idx<2?makeWeaponCard():makeBuffCard(); renderCards(); }
+  function curNames(except){ return cards.filter((c,i)=>c&&i!==except).map(c=>c.name); }
+  function makeWeaponCard(ex=[]){ const pool=WEAPON_NAMES.filter(n=>!ex.includes(n)); return{type:"weapon",name:pick(pool.length?pool:WEAPON_NAMES)}; }
+  function makeBuffCard(ex=[]){
+    const elems=ELEM_NAMES.filter(n=>!ex.includes(n)), adjs=ADJ_NAMES.filter(n=>!ex.includes(n));
+    if((Math.random()<0.55 && elems.length) || !adjs.length){ const e=pick(elems.length?elems:ELEM_NAMES); return{type:"nature",name:e,elem:e}; }
+    return{type:"adj",name:pick(adjs.length?adjs:ADJ_NAMES)};
+  }
+  function initCards(){ cards=[];
+    cards[0]=makeWeaponCard(curNames(0)); cards[1]=makeWeaponCard(curNames(1));
+    cards[2]=makeBuffCard(curNames(2)); cards[3]=makeBuffCard(curNames(3)); cards[4]=makeBuffCard(curNames(4));
+    renderCards(); }
+  function consumeCard(idx){ cards[idx]= idx<2?makeWeaponCard(curNames(idx)):makeBuffCard(curNames(idx)); renderCards(); }
   function cardStyle(c){
     if(c.type==="weapon"){const h=WEAPONS[c.name].hue;return{border:`hsla(${h},85%,55%,.8)`,bg:`hsla(${h},85%,50%,.07)`,col:`hsl(${h},85%,72%)`,kind:"무기"};}
     if(c.type==="adj") return{border:"rgba(150,165,255,.55)",bg:"rgba(120,140,255,.07)",col:"#c4ccff",kind:"형용사"};
@@ -249,9 +256,13 @@
 
   // ===== 적 =====
   function spawnEnemy(){
-    const hp=2+Math.round(level*0.9)+randi(0,1), r=15+hp*2.4;
-    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed:rand(24,34)+level*3.2,shape:randi(0,2),
-      hue:pick([300,330,260,210,160]),wobble:rand(0,Math.PI*2),burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false});
+    const spike=Math.floor(level/10);                       // 0,1,2... (10레벨마다 단계 상승)
+    const hpMul=1+spike*1.0, spMul=1+spike*0.35;            // 급상승: 체력 ×2,×3 / 속도 +35%,+70%
+    const hp=Math.round((2+level*0.9+randi(0,1))*hpMul), r=15+Math.min(hp,42)*2.0;
+    const speed=(rand(24,34)+level*3.2)*spMul;
+    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,shape:randi(0,2),spike,
+      hue:spike>0?pick([0,20,345]):pick([300,330,260,210,160]),wobble:rand(0,Math.PI*2),
+      burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false});
   }
   function alive(){ return enemies.filter(e=>!e.dead); }
   function pickTargets(n,top){ const l=alive(); if(!l.length)return[]; l.sort((a,b)=>top?a.y-b.y:b.y-a.y);
@@ -281,7 +292,7 @@
     else if(effect==="slow"){ const f=[0.6,0.4,0.0][tier];
       if(e.wet||f===0){ e.freezeUntil=now()+1200+tier*500; e.wet=false; } else { e.slowUntil=now()+1500; e.slowFactor=f; } }
     else if(effect==="wet"){ e.wet=true; e.y-=10+tier*9; }
-    else if(effect==="chain"){ e.stunUntil=now()+250+tier*150; let extra=1+tier;
+    else if(effect==="chain"){ e.stunUntil=now()+250+tier*150; let extra=[1,3,5][tier];
       const others=alive().filter(o=>o!==e).sort((a,b)=>Math.hypot(a.x-e.x,a.y-e.y)-Math.hypot(b.x-e.x,b.y-e.y));
       for(let i=0;i<extra&&i<others.length;i++){ const o=others[i]; let d=2*tm; if(o.wet)d*=2;
         bolts.push({x1:e.x,y1:e.y,x2:o.x,y2:o.y,until:now()+110,hue:52,w:2+tier}); rawDamage(o,d); fx(o.x,o.y,"번개",tier,5,"hit",52);} }
@@ -311,17 +322,32 @@
       particles.push({x,y,vx,vy,g,life,age:0,sz,kind,h,lt}); }
   }
 
+  // 최종(3단) 진화 시 필드를 해당 원소로 물들이는 환경 파티클
+  function maxElem(){ return (equipped&&equipped.elem&&equipped.elemTier===2)?equipped.elem:null; }
+  function spawnAmbient(e){
+    const k=ELEMENTS[e].key; let p;
+    if(k==="fire") p={x:rand(0,W),y:H+8,vx:rand(-15,15),vy:-rand(25,60),g:-12,life:rand(1.2,2.2),age:0,sz:rand(2,3.5),kind:"ember",h:rand(6,36),lt:58};
+    else if(k==="ice") p={x:rand(0,W),y:-8,vx:rand(-10,10),vy:rand(25,55),g:8,life:rand(1.5,3),age:0,sz:rand(2,3.5),kind:"shard",h:188,lt:78};
+    else if(k==="water") p={x:rand(0,W),y:-8,vx:0,vy:rand(70,120),g:50,life:rand(1,1.8),age:0,sz:rand(2,3),kind:"drop",h:222,lt:62};
+    else if(k==="thunder") p={x:rand(0,W),y:rand(0,H*0.7),vx:rand(-40,40),vy:rand(-40,40),g:0,life:rand(.15,.4),age:0,sz:rand(1.5,3),kind:"spark",h:54,lt:66};
+    else p={x:rand(0,W),y:rand(0,H*0.72),vx:rand(-12,12),vy:rand(-8,8),g:5,life:rand(1.5,3),age:0,sz:rand(2,4),kind:"dirt",h:rand(95,120),lt:46};
+    particles.push(p);
+  }
+
   // ===== 업데이트 =====
   function update(dt){
     const T=now();
     spawnTimer+=dt*1000;
     if(spawnTimer>=spawnInterval){ spawnTimer=0; spawnEnemy(); if(level>=4&&Math.random()<0.4)spawnEnemy(); }
     if(equipped){ const st=effStats(); fireTimer+=dt*1000; if(fireTimer>=st.interval){ fireTimer=0; autoFire(); } }
+    const _me=maxElem(); if(_me && Math.random()<0.55) spawnAmbient(_me);
     const floorY=H*FLOOR;
     for(const e of enemies){ if(e.dead)continue;
       let sp=e.speed; if(e.freezeUntil>T||e.stunUntil>T)sp=0; else if(e.slowUntil>T)sp*=e.slowFactor;
       e.y+=sp*dt; e.wobble+=dt*2;
-      if(e.burnUntil>T&&e.burnDps>0){ rawDamage(e,e.burnDps*dt); if(Math.random()<0.3)fx(e.x,e.y-e.r*0.3,"불",0,1,"hit",12); }
+      if(e.burnUntil>T&&e.burnDps>0){ rawDamage(e,e.burnDps*dt); if(Math.random()<0.45)fx(e.x+rand(-e.r*0.5,e.r*0.5),e.y-e.r*0.4,"불",0,1,"hit",12); }
+      if(e.freezeUntil>T && Math.random()<0.14) fx(e.x+rand(-e.r*0.6,e.r*0.6),e.y+rand(-e.r*0.6,e.r*0.6),"얼음",0,1,"hit",188);
+      else if(e.stunUntil>T && Math.random()<0.2) fx(e.x,e.y-e.r*0.4,"번개",0,1,"hit",52);
       if(!e.dead&&e.y-e.r>=floorY){ e.dead=true; life--; fx(e.x,floorY,"_",0,18,"death",0); shake(6); updateHUD(); if(life<=0){gameOver();return;} } }
     for(const p of projectiles){
       p.spin+=dt*14;
@@ -346,7 +372,11 @@
     ctx.save();
     if(shakeT>T){ const m=shakeMag*((shakeT-T)/260); ctx.translate(rand(-m,m),rand(-m,m)); }
     ctx.clearRect(-20,-20,W+40,H+40);
-    ctx.save();ctx.globalAlpha=.12;ctx.strokeStyle="#1a6cff";ctx.lineWidth=1;
+    const ft=maxElem();
+    if(ft){ const h=elemHsl(ft); const g=ctx.createRadialGradient(W/2,H*0.92,0,W/2,H*0.92,H*1.2);
+      g.addColorStop(0,`hsla(${h},90%,50%,0.18)`); g.addColorStop(0.7,`hsla(${h},90%,45%,0.06)`); g.addColorStop(1,"transparent");
+      ctx.save(); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.restore(); }
+    ctx.save();ctx.globalAlpha=ft?0.2:0.12;ctx.strokeStyle=ft?`hsl(${elemHsl(ft)},70%,55%)`:"#1a6cff";ctx.lineWidth=1;
     for(let x=0;x<=W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
     for(let y=0;y<=H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.restore();
     const floorY=H*FLOOR;
@@ -472,7 +502,7 @@
     else if(E.effect==="slow"){ const f=[0.6,0.4,0.0][t]; p.push(f===0?"빙결(완전정지)":"둔화 "+Math.round((1-f)*100)+"%"); if(t<2)p.push("젖은 적은 즉시 빙결"); }
     else if(E.effect==="wet"){ p.push("젖음+넉백"); p.push("젖은 적: 얼음=빙결 / 번개=2배"); }
     else if(E.effect==="earth") p.push("관통+"+(1+t)+" · 투사체 속도 -30%");
-    else if(E.effect==="chain") p.push("인접 "+(1+t)+"마리 연쇄 + 감전(스턴)");
+    else if(E.effect==="chain") p.push("인접 "+[1,3,5][t]+"마리 연쇄 + 감전(스턴)");
     if(aoe>0) p.push("착탄 광역 +"+aoe);
     return p.join(" · ");
   }
