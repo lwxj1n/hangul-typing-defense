@@ -152,8 +152,9 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="1.8";
+  const VERSION="2.0";
   const CHANGELOG=[
+    {v:"2.0", items:["[메이저] 적 타입 6종 도입 — 그런트/돌격병(빠름)/강철 거인(탱커)/분열체(죽으면 조각 3개)/보호막(관통으로만 실드 무시)/보스","웨이브(레벨) 시스템 — 레벨마다 정해진 수의 적, 전멸하면 3초 휴식 후 다음 레벨","속도는 타입별 고정(레벨 무관), 난이도는 스폰 수·빈도로 상승","10레벨마다 보스(레벨 높을수록 강함)","레벨 전환 시 LEVEL N 배너 연출 + 카운트다운","모든 적 체력 ×3"]},
     {v:"1.8", items:["적은 아래로만 이동하도록 되돌림(좌우 이동 제거)"]},
     {v:"1.7", items:["예측 조준 도입 — 느린 무기도 떨어지는 적의 경로를 미리 계산해 명중. 게임오버는 '못 맞춰서'가 아니라 '딜이 부족해 적이 넘어와서' 발생","명중 판정 보정(빠른 투사체 관통 방지)"]},
     {v:"1.6", items:["최종 진화 전용 특수 특성 5종(겁화=대폭발 / 천뢰=화면 전체 낙뢰 / 대격변=전체 관통+지진 / 절대영도=주변 빙결 / 심연=끌어올림) + 강화 연출","무기 리밸런스: 기관총 추가 너프, 단검·권총·활·창·도끼 강화","활을 맨아래 적 저격으로 변경","카드 효과 모음 상단 잘림 수정"]},
@@ -203,6 +204,17 @@
     if(m.pierceAdd)t.push("관통+"+m.pierceAdd); if(m.aoeAdd)t.push("광역↑");
     if(m.multishot)t.push(m.multishot+"연발"); if(m.priorityBottom)t.push("맨아래적"); if(m.homing)t.push("유도"); return t.join(" ");};
 
+  // ===== 적 타입 (속도·체력 고정, 체력은 ×3 적용) =====
+  const ENEMY_TYPES = {
+    grunt:   {key:"grunt",   name:"그런트",   speed:52,  hp:9,  r:20, shape:"circle",   hue:300, sat:100, minLevel:1, weight:5},
+    rusher:  {key:"rusher",  name:"돌격병",   speed:120, hp:3,  r:14, shape:"triangle", hue:0,   sat:100, minLevel:1, weight:3},
+    splitter:{key:"splitter",name:"분열체",   speed:58,  hp:15, r:23, shape:"diamond",  hue:280, sat:100, minLevel:3, weight:2.2, split:3},
+    tank:    {key:"tank",    name:"강철 거인", speed:26,  hp:60, r:36, shape:"square",   hue:210, sat:18,  minLevel:5, weight:1.4},
+    shield:  {key:"shield",  name:"보호막",   speed:42,  hp:12, r:22, shape:"circle",   hue:190, sat:100, minLevel:7, weight:1.6, shield:18},
+    mini:    {key:"mini",    name:"조각",     speed:95,  hp:3,  r:11, shape:"diamond",  hue:280, sat:100, minLevel:99, weight:0},
+  };
+  const BOSS = {key:"boss", name:"보스", speed:22, r:60, shape:"hex", hue:330, sat:100};
+
   // ===== 캔버스 =====
   const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
   let W=0,H=0,DPR=1, shakeT=0,shakeMag=0, flashScreen=0,flashHue=0;
@@ -217,6 +229,7 @@
   let cards=[], equipped=null, pendingAdj=[], flashMsg=null;
   let score=0,level=1,life=5, killCount=0,evolveMade=0,weaponSwitch=0;
   let spawnTimer=0,spawnInterval=1300,fireTimer=0,lastTs=0;
+  let phase="spawning", waveTotal=0, waveSpawned=0, restUntil=0, levelBanner=null;   // 웨이브(레벨) 진행
   let devMode=false, devInvincible=false, devClicks=0;
 
   // ===== 카드 (좌:무기2 / 우:버프3) =====
@@ -324,14 +337,23 @@
   }
 
   // ===== 적 =====
-  function spawnEnemy(){
-    const spike=Math.floor(level/10);                       // 0,1,2... (10레벨마다 단계 상승)
-    const hpMul=1+spike*1.0, spMul=1+spike*0.35;            // 급상승: 체력 ×2,×3 / 속도 +35%,+70%
-    const hp=Math.round((2+level*0.9+randi(0,1))*hpMul), r=15+Math.min(hp,42)*2.0;
-    const speed=(rand(24,34)+level*3.2)*spMul;
-    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,shape:randi(0,2),spike,
-      hue:spike>0?pick([0,20,345]):pick([300,330,260,210,160]),wobble:rand(0,Math.PI*2),
-      burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false});
+  function makeEnemy(t,x){
+    return {type:t.key,name:t.name,x,y:-t.r,r:t.r,hp:t.hp,maxHp:t.hp,speed:t.speed,
+      shape:t.shape,hue:t.hue,sat:t.sat==null?100:t.sat,split:t.split||0,shield:t.shield||0,maxShield:t.shield||0,
+      isBoss:false,isMini:t.key==="mini",wobble:rand(0,Math.PI*2),
+      burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false};
+  }
+  function unlockedTypes(){ return Object.values(ENEMY_TYPES).filter(t=>t.weight>0 && level>=t.minLevel); }
+  function pickType(){ const pool=unlockedTypes(); let tot=0; for(const t of pool)tot+=t.weight; let r=Math.random()*tot;
+    for(const t of pool){ r-=t.weight; if(r<=0)return t; } return pool[pool.length-1]; }
+  function spawnOne(){ const t=pickType(); enemies.push(makeEnemy(t, rand(t.r+12,W-t.r-12))); }
+  function spawnMinis(e,n){ const t=ENEMY_TYPES.mini; for(let i=0;i<n;i++){ const m=makeEnemy(t, Math.max(t.r,Math.min(W-t.r,e.x+rand(-24,24)))); m.y=e.y; enemies.push(m); } }
+  function spawnBoss(){ const hp=Math.round(420*(level/10)); const e=makeEnemy({...BOSS,hp}, W/2); e.isBoss=true; e.hp=hp; e.maxHp=hp; enemies.push(e); shake(12); }
+  function startLevel(n){
+    level=n; updateHUD();
+    spawnInterval=Math.max(350, 800-level*35);
+    waveSpawned=0; spawnTimer=0; phase="spawning";
+    if(n%10===0){ spawnBoss(); waveTotal=6+Math.floor(n/10); } else { waveTotal=4+Math.floor(n*1.5); }
   }
   function alive(){ return enemies.filter(e=>!e.dead); }
   function pickTargets(n,top){ const l=alive(); if(!l.length)return[]; l.sort((a,b)=>top?a.y-b.y:b.y-a.y);
@@ -366,7 +388,11 @@
 
   // ===== 데미지/효과 =====
   function rawDamage(e,amount){ e.hp-=amount;
-    if(e.hp<=0&&!e.dead){ e.dead=true; killCount++; score+=10+level*2+e.maxHp*2; fx(e.x,e.y,"_",0,18,"death",e.hue); updateHUD(); maybeLevelUp(); } }
+    if(e.hp<=0&&!e.dead){ e.dead=true; killCount++; score+=(e.isBoss?200:10)+level*2+e.maxHp*2;
+      fx(e.x,e.y,"_",e.isBoss?2:0,e.isBoss?40:18,"death",e.hue);
+      if(e.split>0&&!e.isMini) spawnMinis(e,e.split);
+      if(e.isBoss){ flashScreen=Math.max(flashScreen,0.6); flashHue=e.hue; shake(14); }
+      updateHUD(); } }
   function applyEffect(e,effect,tier){
     const tm=TIER_DMG[tier];
     if(effect==="burn"){ e.burnUntil=now()+2400; e.burnDps=1.6*tm; }
@@ -402,7 +428,9 @@
   function hitEnemy(p,e){
     if(p.hitSet.has(e)) return; p.hitSet.add(e);
     let dmg=p.dmg; if(e.wet&&p.effect==="chain") dmg*=2;
-    rawDamage(e,dmg); if(p.effect) applyEffect(e,p.effect,p.tier);
+    if(e.shield>0 && !(p.pierce>0)){ e.shield-=dmg; fx(e.x,e.y,"_",0,4,"hit",190); if(e.shield<0){ rawDamage(e,-e.shield); e.shield=0; } }
+    else rawDamage(e,dmg);
+    if(p.effect) applyEffect(e,p.effect,p.tier);
     fx(e.x,e.y,p.elem||"_",p.tier,8+p.tier*4,"hit",p.elem?elemHsl(p.elem):p.wHue);
     if(p.tier===2 && !p.specialDone){ p.specialDone=true; tier2Special(p,e); }
     if(p.tier>=1) shake(3+p.tier*2);
@@ -440,8 +468,12 @@
   // ===== 업데이트 =====
   function update(dt){
     const T=now();
-    spawnTimer+=dt*1000;
-    if(spawnTimer>=spawnInterval){ spawnTimer=0; spawnEnemy(); if(level>=4&&Math.random()<0.4)spawnEnemy(); }
+    // 웨이브(레벨) 진행: 정해진 수 스폰 → 전멸하면 3초 휴식 → 다음 레벨
+    if(phase==="spawning"){
+      if(waveSpawned<waveTotal){ spawnTimer+=dt*1000; if(spawnTimer>=spawnInterval){ spawnTimer=0; spawnOne(); waveSpawned++; } }
+      else if(alive().length===0){ phase="resting"; restUntil=T+3000; const nx=level+1;
+        levelBanner={txt:(nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx), hue:(nx%10===0?330:120), until:restUntil}; }
+    } else if(phase==="resting"){ if(T>=restUntil) startLevel(level+1); }
     if(equipped){ const st=effStats(); fireTimer+=dt*1000; if(fireTimer>=st.interval){ fireTimer=0; autoFire(); } }
     const _me=maxElem(); if(_me && Math.random()<0.55) spawnAmbient(_me);
     const floorY=H*FLOOR;
@@ -468,8 +500,8 @@
     enemies=enemies.filter(e=>!e.dead); projectiles=projectiles.filter(p=>!p.dead); particles=particles.filter(p=>!p.dead);
     if(flashScreen>0) flashScreen=Math.max(0,flashScreen-dt*2.2);
     if(flashMsg&&flashMsg.until<T) flashMsg=null;
+    if(levelBanner&&levelBanner.until<T) levelBanner=null;
   }
-  function maybeLevelUp(){ const nl=1+Math.floor(killCount/7); if(nl>level){ level=nl; spawnInterval=Math.max(520,1300-level*80); updateHUD(); } }
 
   // ===== 렌더 =====
   function draw(){
@@ -498,6 +530,11 @@
       ctx.font="800 26px Pretendard,system-ui,sans-serif"; ctx.textAlign="center";
       const h=flashMsg.warn?0:flashMsg.hue; ctx.fillStyle=`hsl(${h},100%,70%)`; ctx.shadowColor=`hsl(${h},100%,60%)`; ctx.shadowBlur=18;
       ctx.fillText(flashMsg.txt,W/2,H*0.4); ctx.restore(); }
+    if(levelBanner){ const left=(levelBanner.until-T); const a=Math.min(1,left/500); ctx.save(); ctx.globalAlpha=Math.max(0.2,Math.min(1,a));
+      ctx.font="800 36px Pretendard,system-ui,sans-serif"; ctx.textAlign="center"; ctx.fillStyle=`hsl(${levelBanner.hue},90%,72%)`;
+      ctx.shadowColor=`hsl(${levelBanner.hue},90%,60%)`; ctx.shadowBlur=24; ctx.fillText(levelBanner.txt,W/2,H*0.26);
+      if(phase==="resting"){ ctx.font="600 14px Pretendard,system-ui,sans-serif"; ctx.fillStyle=`hsl(${levelBanner.hue},80%,75%)`; ctx.shadowBlur=10;
+        ctx.fillText("다음 웨이브 준비… "+Math.ceil(left/1000)+"s", W/2, H*0.26+30); } ctx.restore(); }
     ctx.restore();
     if(flashScreen>0){ ctx.save(); ctx.globalAlpha=flashScreen*0.35; ctx.fillStyle=`hsl(${flashHue},90%,60%)`; ctx.fillRect(0,0,W,H); ctx.restore(); }
   }
@@ -556,21 +593,27 @@
     else if(pt.kind==="dirt"){ ctx.fillRect(pt.x-pt.sz/2,pt.y-pt.sz/2,pt.sz,pt.sz); }
     else { ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.sz,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
   function drawEnemy(e,T){
-    const {x,y,r,hue}=e, wob=Math.sin(e.wobble)*2; let glow=hue;
-    if(e.freezeUntil>T)glow=188; else if(e.burnUntil>T)glow=10; else if(e.slowUntil>T)glow=200;
+    const x=e.x,y=e.y,r=e.r, wob=Math.sin(e.wobble)*2; let glow=e.hue, sat=(e.sat==null?100:e.sat);
+    if(e.freezeUntil>T){glow=188;sat=100;} else if(e.burnUntil>T){glow=10;sat=100;} else if(e.slowUntil>T){glow=200;sat=100;}
     ctx.save(); ctx.translate(x,y+wob);
-    ctx.shadowColor=`hsl(${glow},100%,60%)`; ctx.shadowBlur=16; ctx.strokeStyle=`hsl(${glow},100%,65%)`;
-    ctx.fillStyle=`hsla(${glow},100%,55%,.13)`; ctx.lineWidth=2.5; ctx.beginPath();
-    if(e.shape===0) ctx.arc(0,0,r,0,Math.PI*2);
-    else if(e.shape===1){ ctx.moveTo(0,-r); ctx.lineTo(r*.9,r*.7); ctx.lineTo(-r*.9,r*.7); ctx.closePath(); }
-    else ctx.rect(-r*.8,-r*.8,r*1.6,r*1.6);
+    ctx.shadowColor=`hsl(${glow},${sat}%,60%)`; ctx.shadowBlur=e.isBoss?28:16; ctx.strokeStyle=`hsl(${glow},${sat}%,65%)`;
+    ctx.fillStyle=`hsla(${glow},${sat}%,55%,.15)`; ctx.lineWidth=e.isBoss?4:2.5; ctx.beginPath();
+    const sh=e.shape;
+    if(sh==="triangle"){ ctx.moveTo(0,r); ctx.lineTo(r*.92,-r*.7); ctx.lineTo(-r*.92,-r*.7); ctx.closePath(); }
+    else if(sh==="square"){ ctx.rect(-r*.8,-r*.8,r*1.6,r*1.6); }
+    else if(sh==="diamond"){ ctx.moveTo(0,-r); ctx.lineTo(r,0); ctx.lineTo(0,r); ctx.lineTo(-r,0); ctx.closePath(); }
+    else if(sh==="hex"){ for(let i=0;i<6;i++){ const a=Math.PI/3*i-Math.PI/2,px=Math.cos(a)*r,py=Math.sin(a)*r; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+    else ctx.arc(0,0,r,0,Math.PI*2);
     ctx.fill(); ctx.stroke(); ctx.restore();
+    if(e.shield>0){ ctx.save(); const sa=0.35+0.5*(e.shield/(e.maxShield||1)); ctx.strokeStyle=`hsla(190,100%,72%,${sa})`; ctx.lineWidth=2.5;
+      ctx.shadowColor="hsl(190,100%,65%)"; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(x,y+wob,r+6,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(e.freezeUntil>T){ ctx.save(); ctx.strokeStyle="rgba(150,230,255,.9)"; ctx.lineWidth=1.5;
       for(let i=0;i<3;i++){ const a=e.wobble+i*2.1; ctx.beginPath(); ctx.moveTo(x,y+wob); ctx.lineTo(x+Math.cos(a)*r,y+wob+Math.sin(a)*r); ctx.stroke(); } ctx.restore(); }
     if(e.wet&&e.freezeUntil<=T){ ctx.save(); ctx.fillStyle="rgba(90,170,255,.95)"; ctx.beginPath(); ctx.arc(x+r*.55,y+wob-r*.55,3,0,Math.PI*2); ctx.fill(); ctx.restore(); }
-    if(e.maxHp>1){ const bw=r*1.6,bh=4,bx=x-bw/2,by=y+wob-r-12;
+    if(e.maxHp>1){ const bw=Math.max(r*1.6,18),bh=e.isBoss?6:4,bx=x-bw/2,by=y+wob-r-12;
       ctx.save(); ctx.fillStyle="rgba(255,255,255,.15)"; ctx.fillRect(bx,by,bw,bh);
-      ctx.fillStyle="#b6ff3b"; ctx.fillRect(bx,by,bw*Math.max(0,e.hp/e.maxHp),bh); ctx.restore(); }
+      ctx.fillStyle=e.isBoss?"#ff5db0":"#b6ff3b"; ctx.fillRect(bx,by,bw*Math.max(0,e.hp/e.maxHp),bh); ctx.restore(); }
+    if(e.isBoss){ ctx.save(); ctx.font="700 12px Pretendard,system-ui,sans-serif"; ctx.textAlign="center"; ctx.fillStyle="#ff9ad0"; ctx.shadowColor="#000"; ctx.shadowBlur=4; ctx.fillText("BOSS",x,y+wob-r-18); ctx.restore(); }
   }
 
   // ===== HUD/UI =====
@@ -645,8 +688,9 @@
   function loop(ts){ if(state!=="playing")return; const dt=Math.min(0.05,(ts-lastTs)/1000||0); lastTs=ts; update(dt); if(state!=="playing")return; draw(); requestAnimationFrame(loop); }
   function startGame(){
     resize();
-    enemies=[];projectiles=[];particles=[];bolts=[];equipped=null;pendingAdj=[];flashMsg=null;flashScreen=0;
+    enemies=[];projectiles=[];particles=[];bolts=[];rings=[];equipped=null;pendingAdj=[];flashMsg=null;flashScreen=0;levelBanner=null;
     score=0;level=1;life=5;killCount=0;evolveMade=0;weaponSwitch=0;spawnTimer=0;spawnInterval=1300;fireTimer=0;state="playing";
+    phase="spawning";waveTotal=0;waveSpawned=0;restUntil=0;
     updateHUD();updateEquip();updatePending();
     document.getElementById("startScreen").classList.add("hidden");
     document.getElementById("catalog").classList.add("hidden");
@@ -655,7 +699,8 @@
     document.getElementById("devbar").classList.toggle("hidden",!devMode);
     document.getElementById("devbadge").classList.toggle("hidden",!devMode);
     document.getElementById("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF");
-    typedEl.value="";initCards();spawnEnemy();spawnEnemy();
+    typedEl.value="";initCards();startLevel(1);
+    levelBanner={txt:"LEVEL 1",hue:120,until:performance.now()+1800};
     typedEl.focus();lastTs=performance.now();requestAnimationFrame(loop);
   }
   function gameOver(){
@@ -699,7 +744,7 @@
     else { $("devpassMsg").textContent="비밀번호 오류"; $("devpassMsg").style.color="#ff6b9d"; }
     $("devpassInput").value=""; } });
   $("dvInv").addEventListener("click",()=>{ devInvincible=!devInvincible; $("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF"); });
-  $("dvLvl").addEventListener("click",()=>{ level+=10; spawnInterval=Math.max(520,1300-level*80); updateHUD(); });
+  $("dvLvl").addEventListener("click",()=>{ enemies=[]; startLevel(level+10); });
   $("dvLife").addEventListener("click",()=>{ life+=5; updateHUD(); });
   $("dvEvo").addEventListener("click",()=>{ if(equipped&&equipped.elem&&equipped.elemTier<2){ equipped.elemTier=2; equipped.elemCount=0; evolveBurst(equipped.elem,ELEMENTS[equipped.elem].tiers[2]); updateEquip(); renderCards(); } });
   $("dvClear").addEventListener("click",()=>{ for(const e of alive()) rawDamage(e,1e9); });
