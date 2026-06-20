@@ -170,9 +170,9 @@
   function curNames(except){ return cards.filter((c,i)=>c&&i!==except).map(c=>c.name); }
   function makeWeaponCard(ex=[]){ const pool=WEAPON_NAMES.filter(n=>!ex.includes(n)); return{type:"weapon",name:pick(pool.length?pool:WEAPON_NAMES)}; }
   function makeBuffCard(ex=[]){
-    const elems=ELEM_NAMES.filter(n=>!ex.includes(n)), adjs=ADJ_NAMES.filter(n=>!ex.includes(n));
-    if((Math.random()<0.55 && elems.length) || !adjs.length){ const e=pick(elems.length?elems:ELEM_NAMES); return{type:"nature",name:e,elem:e}; }
-    return{type:"adj",name:pick(adjs.length?adjs:ADJ_NAMES)};
+    const adjs=ADJ_NAMES.filter(n=>!ex.includes(n));   // 형용사는 손패 내 중복 방지
+    if(Math.random()<0.55 || !adjs.length){ const e=pick(ELEM_NAMES); return{type:"nature",name:e,elem:e}; } // 원소는 중복 허용
+    return{type:"adj",name:pick(adjs)};
   }
   function initCards(){ cards=[];
     cards[0]=makeWeaponCard(curNames(0)); cards[1]=makeWeaponCard(curNames(1));
@@ -189,11 +189,16 @@
     if(c.type==="adj") return adjHint(ADJ[c.name]);
     return {burn:"화상",slow:"둔화·빙결",wet:"젖음·넉백",earth:"폭딜·관통",chain:"연쇄·감전"}[ELEMENTS[c.elem].effect];
   }
+  // 장착 무기가 이 원소를 진화시킨 상태면 진화된 이름으로 표시·입력
+  function dispName(c){
+    if(c.type==="nature" && equipped && equipped.elem===c.elem) return ELEMENTS[c.elem].tiers[equipped.elemTier];
+    return c.name;
+  }
   function cardHtml(c,i){
     const s=cardStyle(c);
     return `<div class="card" data-idx="${i}" style="border-color:${s.border};background:${s.bg}">
       <div class="kind" style="color:${s.col}">${s.kind}</div>
-      <div class="w" style="color:${s.col}">${c.name}</div><div class="t">${cardLabel(c)}</div></div>`;
+      <div class="w" style="color:${s.col}">${dispName(c)}</div><div class="t">${cardLabel(c)}</div></div>`;
   }
   function renderCards(){
     const el=document.getElementById("cards");
@@ -203,7 +208,7 @@
   }
   function highlight(prefix){
     [...document.querySelectorAll("#cards .card")].forEach(el=>{
-      const c=cards[+el.dataset.idx], on=prefix&&c.name.startsWith(prefix);
+      const c=cards[+el.dataset.idx], on=prefix&&dispName(c).startsWith(prefix);
       el.classList.toggle("match",!!on); el.style.boxShadow=on?`0 0 16px ${cardStyle(c).border}`:"none";
     });
   }
@@ -215,7 +220,7 @@
     setTimeout(()=>{ submit(typedEl.value.trim()); typedEl.value=""; highlight(""); },0); } });
   function submit(v){
     if(!v) return;
-    const idx=cards.findIndex(c=>c.name===v); if(idx===-1) return;
+    const idx=cards.findIndex(c=>dispName(c)===v); if(idx===-1) return;
     const c=cards[idx];
     if(c.type==="adj") pendingAdj.push(c.name),updatePending();
     else if(c.type==="weapon") playWeapon(c);
