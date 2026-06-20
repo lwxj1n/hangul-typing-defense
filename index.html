@@ -152,9 +152,10 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="1.7";
+  const VERSION="1.8";
   const CHANGELOG=[
-    {v:"1.7", items:["적이 좌우로도 이동(절반 정도가 옆으로 드리프트, 벽 반사)","예측 조준 도입 — 느린 무기도 적의 이동 경로를 미리 계산해 명중. 이제 게임오버는 '못 맞춰서'가 아니라 '딜이 부족해 적이 넘어와서' 발생","명중 판정 보정(빠른 투사체 관통 방지)"]},
+    {v:"1.8", items:["적은 아래로만 이동하도록 되돌림(좌우 이동 제거)"]},
+    {v:"1.7", items:["예측 조준 도입 — 느린 무기도 떨어지는 적의 경로를 미리 계산해 명중. 게임오버는 '못 맞춰서'가 아니라 '딜이 부족해 적이 넘어와서' 발생","명중 판정 보정(빠른 투사체 관통 방지)"]},
     {v:"1.6", items:["최종 진화 전용 특수 특성 5종(겁화=대폭발 / 천뢰=화면 전체 낙뢰 / 대격변=전체 관통+지진 / 절대영도=주변 빙결 / 심연=끌어올림) + 강화 연출","무기 리밸런스: 기관총 추가 너프, 단검·권총·활·창·도끼 강화","활을 맨아래 적 저격으로 변경","카드 효과 모음 상단 잘림 수정"]},
     {v:"1.5", items:["업데이트 내역 화면 추가","게임 중 메인 화면 이동(ESC 또는 버튼)","개발자 모드 추가"]},
     {v:"1.4", items:["진화하면 해당 원소 카드가 진화된 단어(화염·지진 등)로 표시·입력","원소 카드 중복 출현 허용"]},
@@ -328,8 +329,7 @@
     const hpMul=1+spike*1.0, spMul=1+spike*0.35;            // 급상승: 체력 ×2,×3 / 속도 +35%,+70%
     const hp=Math.round((2+level*0.9+randi(0,1))*hpMul), r=15+Math.min(hp,42)*2.0;
     const speed=(rand(24,34)+level*3.2)*spMul;
-    const vx=(Math.random()<0.55)? rand(-1,1)*(40+level*5+spike*25) : 0;   // 절반 정도는 좌우로 이동
-    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,vx,shape:randi(0,2),spike,
+    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,shape:randi(0,2),spike,
       hue:spike>0?pick([0,20,345]):pick([300,330,260,210,160]),wobble:rand(0,Math.PI*2),
       burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false});
   }
@@ -448,7 +448,6 @@
     for(const e of enemies){ if(e.dead)continue;
       let mf=1; if(e.freezeUntil>T||e.stunUntil>T)mf=0; else if(e.slowUntil>T)mf=e.slowFactor;
       e.y+=e.speed*mf*dt; e.wobble+=dt*2;
-      if(e.vx){ e.x+=e.vx*mf*dt; if(e.x<e.r){e.x=e.r;e.vx=Math.abs(e.vx);} else if(e.x>W-e.r){e.x=W-e.r;e.vx=-Math.abs(e.vx);} }
       if(e.burnUntil>T&&e.burnDps>0){ rawDamage(e,e.burnDps*dt); if(Math.random()<0.45)fx(e.x+rand(-e.r*0.5,e.r*0.5),e.y-e.r*0.4,"불",0,1,"hit",12); }
       if(e.freezeUntil>T && Math.random()<0.14) fx(e.x+rand(-e.r*0.6,e.r*0.6),e.y+rand(-e.r*0.6,e.r*0.6),"얼음",0,1,"hit",188);
       else if(e.stunUntil>T && Math.random()<0.2) fx(e.x,e.y-e.r*0.4,"번개",0,1,"hit",52);
