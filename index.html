@@ -152,8 +152,9 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="1.6";
+  const VERSION="1.7";
   const CHANGELOG=[
+    {v:"1.7", items:["적이 좌우로도 이동(절반 정도가 옆으로 드리프트, 벽 반사)","예측 조준 도입 — 느린 무기도 적의 이동 경로를 미리 계산해 명중. 이제 게임오버는 '못 맞춰서'가 아니라 '딜이 부족해 적이 넘어와서' 발생","명중 판정 보정(빠른 투사체 관통 방지)"]},
     {v:"1.6", items:["최종 진화 전용 특수 특성 5종(겁화=대폭발 / 천뢰=화면 전체 낙뢰 / 대격변=전체 관통+지진 / 절대영도=주변 빙결 / 심연=끌어올림) + 강화 연출","무기 리밸런스: 기관총 추가 너프, 단검·권총·활·창·도끼 강화","활을 맨아래 적 저격으로 변경","카드 효과 모음 상단 잘림 수정"]},
     {v:"1.5", items:["업데이트 내역 화면 추가","게임 중 메인 화면 이동(ESC 또는 버튼)","개발자 모드 추가"]},
     {v:"1.4", items:["진화하면 해당 원소 카드가 진화된 단어(화염·지진 등)로 표시·입력","원소 카드 중복 출현 허용"]},
@@ -327,7 +328,8 @@
     const hpMul=1+spike*1.0, spMul=1+spike*0.35;            // 급상승: 체력 ×2,×3 / 속도 +35%,+70%
     const hp=Math.round((2+level*0.9+randi(0,1))*hpMul), r=15+Math.min(hp,42)*2.0;
     const speed=(rand(24,34)+level*3.2)*spMul;
-    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,shape:randi(0,2),spike,
+    const vx=(Math.random()<0.55)? rand(-1,1)*(40+level*5+spike*25) : 0;   // 절반 정도는 좌우로 이동
+    enemies.push({x:rand(r+12,W-r-12),y:-r,r,hp,maxHp:hp,speed,vx,shape:randi(0,2),spike,
       hue:spike>0?pick([0,20,345]):pick([300,330,260,210,160]),wobble:rand(0,Math.PI*2),
       burnUntil:0,burnDps:0,slowUntil:0,slowFactor:1,freezeUntil:0,stunUntil:0,wet:false});
   }
@@ -336,13 +338,25 @@
     const o=[]; for(let i=0;i<n;i++)o.push(l[Math.min(i,l.length-1)]); return o; }
 
   // ===== 발사 =====
+  // 적의 이동을 예측해 미리 명중 지점을 계산 (느린 투사체도 옆으로 가는 적을 맞춤)
+  function enemyVel(e){ const T=now(); const f=(e.freezeUntil>T||e.stunUntil>T)?0:(e.slowUntil>T?e.slowFactor:1); return {vx:(e.vx||0)*f, vy:e.speed*f}; }
+  function predictAim(sx,sy,e,s){
+    const v=enemyVel(e), px=e.x-sx, py=e.y-sy;
+    const a=v.vx*v.vx+v.vy*v.vy-s*s, b=2*(px*v.vx+py*v.vy), c=px*px+py*py;
+    let t=Infinity;
+    if(Math.abs(a)<1e-4){ if(Math.abs(b)>1e-6){ const tt=-c/b; if(tt>0)t=tt; } }
+    else { const d=b*b-4*a*c; if(d>=0){ const sq=Math.sqrt(d); for(const x of [(-b-sq)/(2*a),(-b+sq)/(2*a)]) if(x>0&&x<t)t=x; } }
+    if(isFinite(t)){ let ax=e.x+v.vx*t; ax=Math.max(e.r,Math.min(W-e.r,ax)); return {x:ax, y:e.y+v.vy*t}; }
+    return {x:e.x,y:e.y};
+  }
   function autoFire(){
     if(!equipped) return; const st=effStats(); if(!alive().length) return;
     const count=Math.max(st.multishot, st.scatter?2:1);
     const targets=pickTargets(count,st.top), sx=W/2, sy=H*FLOOR+24;
     fx(sx,sy,st.elem||"_",st.tier,6,"muzzle",st.hue);
     for(const t of targets){
-      const ang=Math.atan2(t.y-sy,t.x-sx);
+      const aim=predictAim(sx,sy,t,st.projSpeed);
+      const ang=Math.atan2(aim.y-sy,aim.x-sx);
       projectiles.push({x:sx,y:sy,vx:Math.cos(ang)*st.projSpeed,vy:Math.sin(ang)*st.projSpeed,speed:st.projSpeed,
         target:t,homing:st.homing,dmg:st.dmg,pierce:st.pierce,aoe:st.aoe,elem:st.elem,effect:st.effect,tier:st.tier,
         shape:st.shape,wHue:st.hue,ang,hitSet:new Set(),trail:[],spin:0});
@@ -432,8 +446,9 @@
     const _me=maxElem(); if(_me && Math.random()<0.55) spawnAmbient(_me);
     const floorY=H*FLOOR;
     for(const e of enemies){ if(e.dead)continue;
-      let sp=e.speed; if(e.freezeUntil>T||e.stunUntil>T)sp=0; else if(e.slowUntil>T)sp*=e.slowFactor;
-      e.y+=sp*dt; e.wobble+=dt*2;
+      let mf=1; if(e.freezeUntil>T||e.stunUntil>T)mf=0; else if(e.slowUntil>T)mf=e.slowFactor;
+      e.y+=e.speed*mf*dt; e.wobble+=dt*2;
+      if(e.vx){ e.x+=e.vx*mf*dt; if(e.x<e.r){e.x=e.r;e.vx=Math.abs(e.vx);} else if(e.x>W-e.r){e.x=W-e.r;e.vx=-Math.abs(e.vx);} }
       if(e.burnUntil>T&&e.burnDps>0){ rawDamage(e,e.burnDps*dt); if(Math.random()<0.45)fx(e.x+rand(-e.r*0.5,e.r*0.5),e.y-e.r*0.4,"불",0,1,"hit",12); }
       if(e.freezeUntil>T && Math.random()<0.14) fx(e.x+rand(-e.r*0.6,e.r*0.6),e.y+rand(-e.r*0.6,e.r*0.6),"얼음",0,1,"hit",188);
       else if(e.stunUntil>T && Math.random()<0.2) fx(e.x,e.y-e.r*0.4,"번개",0,1,"hit",52);
@@ -445,7 +460,7 @@
         if(t){ const dx=t.x-p.x,dy=t.y-p.y,d=Math.hypot(dx,dy)||1; p.vx=dx/d*p.speed; p.vy=dy/d*p.speed; p.ang=Math.atan2(dy,dx);} }
       p.x+=p.vx*dt; p.y+=p.vy*dt;
       p.trail.push({x:p.x,y:p.y}); if(p.trail.length>10)p.trail.shift();
-      for(const e of alive()){ if(p.hitSet.has(e))continue; if(Math.hypot(e.x-p.x,e.y-p.y)<e.r+5){ hitEnemy(p,e); if(p.dead)break; } }
+      for(const e of alive()){ if(p.hitSet.has(e))continue; if(Math.hypot(e.x-p.x,e.y-p.y)<e.r+8){ hitEnemy(p,e); if(p.dead)break; } }
       if(p.x<-40||p.x>W+40||p.y<-40||p.y>H+40) p.dead=true;
     }
     for(const pt of particles){ pt.age+=dt; pt.x+=pt.vx*dt; pt.y+=pt.vy*dt; pt.vy+=pt.g*dt; if(pt.age>=pt.life)pt.dead=true; }
