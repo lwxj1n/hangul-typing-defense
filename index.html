@@ -62,6 +62,22 @@
   .cat-item{border:1px solid rgba(120,140,255,.25);border-radius:8px;padding:7px 9px;background:rgba(255,255,255,.02)}
   .cat-item .n{font-weight:800;font-size:13px}
   .cat-item .d{font-size:11px;color:var(--dim);line-height:1.35;margin-top:2px}
+  #verLabel{margin-top:-4px;font-size:13px;color:var(--dim);letter-spacing:1px}
+  #verLabel #verNum{color:var(--neon3);font-weight:800}
+  #devspot{position:absolute;left:0;bottom:0;width:56px;height:56px;cursor:default}
+  #devpass{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+  #devpass input{width:96px;background:rgba(0,0,0,.6);border:1px solid var(--neon2);border-radius:6px;color:var(--neon2);text-align:center;font-size:17px;padding:6px;outline:none;letter-spacing:4px}
+  #devpass #devpassMsg{font-size:10px;color:var(--neon2)}
+  #mainBtn{position:absolute;left:8px;bottom:8px;z-index:4;cursor:pointer;font-size:11px;letter-spacing:.5px;
+    border:1px solid rgba(0,240,255,.4);background:rgba(0,0,0,.5);color:var(--neon);border-radius:8px;padding:5px 10px}
+  #mainBtn:hover{background:rgba(0,240,255,.15)}
+  #devbadge{position:absolute;left:8px;top:34px;z-index:4;font-size:10px;color:#ff8fe6;letter-spacing:1px;pointer-events:none}
+  #devbar{position:absolute;right:8px;top:36px;z-index:4;display:flex;flex-direction:column;gap:5px}
+  #devbar button{cursor:pointer;font-size:11px;border:1px solid rgba(255,43,214,.5);background:rgba(255,43,214,.1);color:#ff8fe6;border-radius:7px;padding:5px 8px}
+  #devbar button:hover{background:rgba(255,43,214,.22)}
+  .log-item{border-left:3px solid var(--neon);padding:3px 0 4px 11px;margin-bottom:9px}
+  .log-item .lv{font-weight:800;font-size:14px;color:var(--neon3)}
+  .log-item .li{font-size:12px;color:var(--dim);line-height:1.55;margin-top:1px}
 </style>
 </head>
 <body>
@@ -79,9 +95,19 @@
   <div id="inputBar" class="hidden"><input id="typed" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="카드 단어 입력 후 Enter" /></div>
   <div id="hint" class="hidden">형용사 → 무기 → 원소 순서로 Enter</div>
   <div id="cards" class="hidden"></div>
+  <button id="mainBtn" class="hidden">≡ 메인 (ESC)</button>
+  <div id="devbadge" class="hidden">🛠 DEV</div>
+  <div id="devbar" class="hidden">
+    <button id="dvInv">무적 OFF</button>
+    <button id="dvLvl">레벨 +10</button>
+    <button id="dvLife">라이프 +5</button>
+    <button id="dvEvo">즉시 진화</button>
+    <button id="dvClear">적 일소</button>
+  </div>
 
   <div id="startScreen" class="overlay">
     <h1>한글 타자 디펜스</h1>
+    <div id="verLabel">v<span id="verNum">1.5</span></div>
     <p class="big">카드 단어를 입력하고 <span class="kbd">Enter</span>로 발동. 무기를 장착하면 자동으로 적을 공격해요.</p>
     <p><b style="color:#b9c4ff">형용사</b>는 <b>무기보다 먼저</b> 입력해야 적용(여러 개 가능). <span class="pink">원소</span>는 무기 <b>장착 후</b> 입력, 무기당 <b>1개</b>. 같은 원소 <span class="kbd">2번</span>이면 진화(불→화염→겁화).<br/>
       강화는 무기에 저장, <b style="color:#ff8fe6">무기를 바꾸면 초기화</b>. 투사체는 <b>직선</b>으로 날아가니 적의 위치를 노려서 발사돼요.</p>
@@ -92,7 +118,16 @@
     <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
       <button class="btn" id="startBtn">게임 시작</button>
       <button class="btn ghost" id="catBtn">📖 카드 효과 모음</button>
+      <button class="btn ghost" id="logBtn">📜 업데이트 내역</button>
     </div>
+    <div id="devspot"></div>
+    <div id="devpass" class="hidden"><input id="devpassInput" type="password" inputmode="numeric" placeholder="••••" maxlength="8" /><span id="devpassMsg"></span></div>
+  </div>
+
+  <div id="changelog" class="overlay hidden">
+    <h1 style="font-size:26px">업데이트 내역</h1>
+    <div class="cat-wrap" id="logBody"></div>
+    <button class="btn" id="logClose">닫기</button>
   </div>
 
   <div id="catalog" class="overlay hidden">
@@ -114,6 +149,19 @@
   "use strict";
   const now=()=>performance.now();
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
+
+  // ===== 버전 / 업데이트 내역 =====
+  const VERSION="1.5";
+  const CHANGELOG=[
+    {v:"1.5", items:["업데이트 내역 화면 추가","게임 중 메인 화면 이동(ESC 또는 버튼)","개발자 모드 추가"]},
+    {v:"1.4", items:["진화하면 해당 원소 카드가 진화된 단어(화염·지진 등)로 표시·입력","원소 카드 중복 출현 허용"]},
+    {v:"1.3", items:["진화 조건 3회 → 2회로 완화","진화 게이지 UI","진화 시 빛 링·파티클 연출"]},
+    {v:"1.2", items:["기관총 너프 / 도끼 투사체 속도↑","투사체 직선화('유도의' 삭제)","번개 연쇄 1·3·5마리","Lv10마다 적 난이도 급상승","같은 카드 동시 등장 방지","최종 진화 시 필드 테마","원소 상태별 디테일 이펙트"]},
+    {v:"1.1", items:["조합 문법: 형용사→무기→원소 / Enter 발동","장착 효과 패널","카드 5장(무기2·버프3) 좌우 분리","무기별 발사체·포대 아이콘","카드 효과 도감"]},
+    {v:"1.0", items:["[메이저] 무기 장착·자동 발사 체계","5원소(불·번개·대지·얼음·물) 자연 카드","형용사 강화","3단 진화 시스템"]},
+    {v:"0.2", items:["카드 필드 방식 도입(단어 카드 선택→무기화)","형용사+명사 합성 공격"]},
+    {v:"0.1", items:["첫 버전: 적 낙하 + 한글 단어 타이핑으로 공격"]},
+  ];
 
   // ===== 데이터 =====
   const WEAPONS = {
@@ -165,6 +213,7 @@
   let cards=[], equipped=null, pendingAdj=[], flashMsg=null;
   let score=0,level=1,life=5, killCount=0,evolveMade=0,weaponSwitch=0;
   let spawnTimer=0,spawnInterval=1300,fireTimer=0,lastTs=0;
+  let devMode=false, devInvincible=false, devClicks=0;
 
   // ===== 카드 (좌:무기2 / 우:버프3) =====
   function curNames(except){ return cards.filter((c,i)=>c&&i!==except).map(c=>c.name); }
@@ -364,7 +413,8 @@
       if(e.burnUntil>T&&e.burnDps>0){ rawDamage(e,e.burnDps*dt); if(Math.random()<0.45)fx(e.x+rand(-e.r*0.5,e.r*0.5),e.y-e.r*0.4,"불",0,1,"hit",12); }
       if(e.freezeUntil>T && Math.random()<0.14) fx(e.x+rand(-e.r*0.6,e.r*0.6),e.y+rand(-e.r*0.6,e.r*0.6),"얼음",0,1,"hit",188);
       else if(e.stunUntil>T && Math.random()<0.2) fx(e.x,e.y-e.r*0.4,"번개",0,1,"hit",52);
-      if(!e.dead&&e.y-e.r>=floorY){ e.dead=true; life--; fx(e.x,floorY,"_",0,18,"death",0); shake(6); updateHUD(); if(life<=0){gameOver();return;} } }
+      if(!e.dead&&e.y-e.r>=floorY){ e.dead=true; fx(e.x,floorY,"_",0,18,"death",0); shake(6);
+        if(!devInvincible){ life--; updateHUD(); if(life<=0){gameOver();return;} } } }
     for(const p of projectiles){
       p.spin+=dt*14;
       if(p.homing){ let t=p.target; if(!t||t.dead){ const l=alive(); t=l.length?l.sort((a,b)=>b.y-a.y)[0]:null; p.target=t; }
@@ -560,7 +610,10 @@
     document.getElementById("startScreen").classList.add("hidden");
     document.getElementById("catalog").classList.add("hidden");
     document.getElementById("overScreen").classList.add("hidden");
-    ["inputBar","hint","cards"].forEach(id=>document.getElementById(id).classList.remove("hidden"));
+    ["inputBar","hint","cards","mainBtn"].forEach(id=>document.getElementById(id).classList.remove("hidden"));
+    document.getElementById("devbar").classList.toggle("hidden",!devMode);
+    document.getElementById("devbadge").classList.toggle("hidden",!devMode);
+    document.getElementById("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF");
     typedEl.value="";initCards();spawnEnemy();spawnEnemy();
     typedEl.focus();lastTs=performance.now();requestAnimationFrame(loop);
   }
@@ -569,14 +622,46 @@
     document.getElementById("finalScore").textContent=score;
     document.getElementById("finalLevel").textContent=level;
     document.getElementById("overStats").textContent=`처치 ${killCount} · 진화 ${evolveMade} · 무기교체 ${weaponSwitch}`;
-    ["inputBar","cards","hint","equip","effects","pending","evogauge"].forEach(id=>document.getElementById(id).classList.add("hidden"));
+    ["inputBar","cards","hint","equip","effects","pending","evogauge","mainBtn","devbar","devbadge"].forEach(id=>document.getElementById(id).classList.add("hidden"));
     document.getElementById("overScreen").classList.remove("hidden");
   }
-  document.getElementById("startBtn").addEventListener("click",startGame);
-  document.getElementById("retryBtn").addEventListener("click",startGame);
-  document.getElementById("catBtn").addEventListener("click",()=>{ buildCatalog(); document.getElementById("startScreen").classList.add("hidden"); document.getElementById("catalog").classList.remove("hidden"); });
-  document.getElementById("catClose").addEventListener("click",()=>{ document.getElementById("catalog").classList.add("hidden"); document.getElementById("startScreen").classList.remove("hidden"); });
-  document.getElementById("stage").addEventListener("click",()=>{ if(state==="playing")typedEl.focus(); });
+  function toMain(){
+    state="start";
+    ["inputBar","cards","hint","equip","effects","pending","evogauge","mainBtn","devbar","devbadge"].forEach(id=>document.getElementById(id).classList.add("hidden"));
+    document.getElementById("overScreen").classList.add("hidden");
+    document.getElementById("catalog").classList.add("hidden");
+    document.getElementById("changelog").classList.add("hidden");
+    document.getElementById("startScreen").classList.remove("hidden");
+  }
+  function buildChangelog(){
+    document.getElementById("logBody").innerHTML=CHANGELOG.map(e=>
+      `<div class="log-item"><div class="lv">v${e.v}</div><div class="li">${e.items.map(x=>"· "+x).join("<br/>")}</div></div>`).join("");
+  }
+  const $=id=>document.getElementById(id);
+  $("verNum").textContent=VERSION;
+  $("startBtn").addEventListener("click",startGame);
+  $("retryBtn").addEventListener("click",startGame);
+  $("catBtn").addEventListener("click",()=>{ buildCatalog(); $("startScreen").classList.add("hidden"); $("catalog").classList.remove("hidden"); });
+  $("catClose").addEventListener("click",()=>{ $("catalog").classList.add("hidden"); $("startScreen").classList.remove("hidden"); });
+  $("logBtn").addEventListener("click",()=>{ buildChangelog(); $("startScreen").classList.add("hidden"); $("changelog").classList.remove("hidden"); });
+  $("logClose").addEventListener("click",()=>{ $("changelog").classList.add("hidden"); $("startScreen").classList.remove("hidden"); });
+  $("mainBtn").addEventListener("click",toMain);
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&state==="playing") toMain(); });
+  $("stage").addEventListener("click",()=>{ if(state==="playing")typedEl.focus(); });
+
+  // ===== 개발자 모드 (왼쪽 아래 9번 클릭 → 비밀번호) =====
+  $("devspot").addEventListener("click",()=>{ if(devMode)return; devClicks++;
+    if(devClicks>=9){ devClicks=0; $("devpass").classList.remove("hidden"); $("devpassInput").focus(); } });
+  $("devpassInput").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault();
+    const v=$("devpassInput").value;
+    if(v==="1243"){ devMode=true; $("devpassMsg").textContent="개발자 모드 ON ✓"; $("devpassMsg").style.color="#b6ff3b"; }
+    else { $("devpassMsg").textContent="비밀번호 오류"; $("devpassMsg").style.color="#ff6b9d"; }
+    $("devpassInput").value=""; } });
+  $("dvInv").addEventListener("click",()=>{ devInvincible=!devInvincible; $("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF"); });
+  $("dvLvl").addEventListener("click",()=>{ level+=10; spawnInterval=Math.max(520,1300-level*80); updateHUD(); });
+  $("dvLife").addEventListener("click",()=>{ life+=5; updateHUD(); });
+  $("dvEvo").addEventListener("click",()=>{ if(equipped&&equipped.elem&&equipped.elemTier<2){ equipped.elemTier=2; equipped.elemCount=0; evolveBurst(equipped.elem,ELEMENTS[equipped.elem].tiers[2]); updateEquip(); renderCards(); } });
+  $("dvClear").addEventListener("click",()=>{ for(const e of alive()) rawDamage(e,1e9); });
   resize();
 })();
 </script>
