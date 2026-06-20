@@ -22,6 +22,8 @@
   #equip b{font-size:15px}
   #effects{position:absolute;top:62px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--neon3);pointer-events:none;text-align:center;width:92%;letter-spacing:.3px}
   #pending{position:absolute;top:84px;left:50%;transform:translateX(-50%);font-size:12px;color:#b9c4ff;pointer-events:none}
+  #evogauge{position:absolute;top:104px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--dim);pointer-events:none;display:flex;align-items:center;gap:6px}
+  #evogauge .pip{display:inline-block;width:22px;height:9px;border-radius:3px;transition:all .15s}
   #inputBar{position:absolute;left:50%;bottom:158px;transform:translateX(-50%);width:78%;max-width:480px;display:flex;gap:10px}
   #typed{flex:1;background:rgba(0,0,0,.55);border:1.5px solid var(--neon);border-radius:10px;color:var(--neon);
     font-size:22px;font-weight:700;text-align:center;letter-spacing:2px;padding:9px 14px;outline:none;
@@ -73,6 +75,7 @@
   <div id="equip" class="hidden"></div>
   <div id="effects" class="hidden"></div>
   <div id="pending" class="hidden"></div>
+  <div id="evogauge" class="hidden"></div>
   <div id="inputBar" class="hidden"><input id="typed" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="카드 단어 입력 후 Enter" /></div>
   <div id="hint" class="hidden">형용사 → 무기 → 원소 순서로 Enter</div>
   <div id="cards" class="hidden"></div>
@@ -80,7 +83,7 @@
   <div id="startScreen" class="overlay">
     <h1>한글 타자 디펜스</h1>
     <p class="big">카드 단어를 입력하고 <span class="kbd">Enter</span>로 발동. 무기를 장착하면 자동으로 적을 공격해요.</p>
-    <p><b style="color:#b9c4ff">형용사</b>는 <b>무기보다 먼저</b> 입력해야 적용(여러 개 가능). <span class="pink">원소</span>는 무기 <b>장착 후</b> 입력, 무기당 <b>1개</b>. 같은 원소 <span class="kbd">3번</span>이면 진화(불→화염→겁화).<br/>
+    <p><b style="color:#b9c4ff">형용사</b>는 <b>무기보다 먼저</b> 입력해야 적용(여러 개 가능). <span class="pink">원소</span>는 무기 <b>장착 후</b> 입력, 무기당 <b>1개</b>. 같은 원소 <span class="kbd">2번</span>이면 진화(불→화염→겁화).<br/>
       강화는 무기에 저장, <b style="color:#ff8fe6">무기를 바꾸면 초기화</b>. 투사체는 <b>직선</b>으로 날아가니 적의 위치를 노려서 발사돼요.</p>
     <div class="elegend">
       <span><b style="color:hsl(6,90%,58%)">불</b></span><span><b style="color:hsl(52,95%,55%)">번개</b></span>
@@ -158,7 +161,7 @@
   // ===== 상태 =====
   const FLOOR=0.74;
   let state="start";
-  let enemies=[],projectiles=[],particles=[],bolts=[];
+  let enemies=[],projectiles=[],particles=[],bolts=[],rings=[];
   let cards=[], equipped=null, pendingAdj=[], flashMsg=null;
   let score=0,level=1,life=5, killCount=0,evolveMade=0,weaponSwitch=0;
   let spawnTimer=0,spawnInterval=1300,fireTimer=0,lastTs=0;
@@ -234,9 +237,17 @@
     if(!equipped){ flash("먼저 무기를 장착!",0,true); return; }
     if(equipped.elem!==c.elem){ equipped.elem=c.elem; equipped.elemTier=0; equipped.elemCount=1; }
     else { equipped.elemCount++;
-      if(equipped.elemCount>=3&&equipped.elemTier<2){ equipped.elemTier++; equipped.elemCount=0; evolveMade++;
-        const nm=ELEMENTS[c.elem].tiers[equipped.elemTier]; flash(nm+" 진화!",elemHsl(c.elem)); flashScreen=1; flashHue=elemHsl(c.elem); shake(8); } }
+      if(equipped.elemCount>=2&&equipped.elemTier<2){ equipped.elemTier++; equipped.elemCount=0; evolveMade++;
+        evolveBurst(c.elem, ELEMENTS[c.elem].tiers[equipped.elemTier]); } }
     updateEquip();
+  }
+  function evolveBurst(elem,nm){
+    const h=elemHsl(elem); flash(nm+" 진화!",h); flashScreen=1; flashHue=h; shake(16);
+    const cx=W/2, cy=H*FLOOR+18;
+    rings.push({x:cx,y:cy,r:14,maxR:Math.max(W,H)*0.95,hue:h,age:0,life:0.9});
+    rings.push({x:cx,y:cy,r:8,maxR:Math.max(W,H)*0.6,hue:h,age:-0.12,life:0.9});
+    for(let i=0;i<48;i++){ const a=rand(0,Math.PI*2),s=rand(120,440);
+      particles.push({x:cx,y:cy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,g:60,life:rand(.5,1.1),age:0,sz:rand(2.5,4.5),kind:"ember",h:h+rand(-14,14),lt:64}); }
   }
   function flash(txt,hue,warn){ flashMsg={txt,hue,until:now()+(warn?900:1500),warn}; }
   function shake(m){ shakeT=now()+260; shakeMag=m; }
@@ -360,6 +371,7 @@
     }
     for(const pt of particles){ pt.age+=dt; pt.x+=pt.vx*dt; pt.y+=pt.vy*dt; pt.vy+=pt.g*dt; if(pt.age>=pt.life)pt.dead=true; }
     if(bolts.length) bolts=bolts.filter(b=>b.until>T);
+    if(rings.length){ for(const rg of rings){ rg.age+=dt; rg.r+=(rg.maxR-rg.r)*dt*3.5; } rings=rings.filter(rg=>rg.age<rg.life); }
     enemies=enemies.filter(e=>!e.dead); projectiles=projectiles.filter(p=>!p.dead); particles=particles.filter(p=>!p.dead);
     if(flashScreen>0) flashScreen=Math.max(0,flashScreen-dt*2.2);
     if(flashMsg&&flashMsg.until<T) flashMsg=null;
@@ -384,6 +396,7 @@
     ctx.beginPath();ctx.moveTo(0,floorY);ctx.lineTo(W,floorY);ctx.stroke();ctx.restore();
     // 포대 = 무기 아이콘
     drawTurret(W/2, floorY+18);
+    for(const rg of rings) drawRing(rg);
     for(const e of enemies) drawEnemy(e,T);
     for(const b of bolts) drawBolt(b);
     for(const p of projectiles) drawProjectile(p);
@@ -418,6 +431,9 @@
       ctx.beginPath(); ctx.moveTo(0,-16); ctx.quadraticCurveTo(-18,-14,-14,-2); ctx.quadraticCurveTo(-6,-6,0,-6); ctx.closePath(); ctx.fill(); }
     ctx.restore();
   }
+  function drawRing(rg){ if(rg.age<0)return; const a=Math.max(0,1-rg.age/rg.life);
+    ctx.save(); ctx.globalAlpha=a*0.85; ctx.strokeStyle=`hsl(${rg.hue},95%,66%)`; ctx.lineWidth=2+5*a;
+    ctx.shadowColor=`hsl(${rg.hue},95%,60%)`; ctx.shadowBlur=22; ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
   function drawBolt(b){ ctx.save(); ctx.strokeStyle=`hsl(${b.hue},100%,70%)`; ctx.lineWidth=b.w; ctx.shadowColor=`hsl(${b.hue},100%,60%)`; ctx.shadowBlur=12;
     const seg=6,dx=(b.x2-b.x1)/seg,dy=(b.y2-b.y1)/seg; ctx.beginPath(); ctx.moveTo(b.x1,b.y1);
     for(let i=1;i<seg;i++) ctx.lineTo(b.x1+dx*i+rand(-8,8),b.y1+dy*i+rand(-8,8)); ctx.lineTo(b.x2,b.y2); ctx.stroke(); ctx.restore(); }
@@ -467,13 +483,23 @@
   function updateHUD(){ $score.textContent=score; $level.textContent=level; $life.textContent=Math.max(0,life); }
   function updateEquip(){
     const el=document.getElementById("equip");
-    if(!equipped){ el.classList.add("hidden"); updateEffects(); return; }
+    if(!equipped){ el.classList.add("hidden"); updateEffects(); updateGauge(); return; }
     el.classList.remove("hidden");
     let s=""; if(equipped.adj.labels.length) s+=`<span style="color:#c4ccff">${equipped.adj.labels.join(" ")}</span> `;
     s+=`<b style="color:hsl(${equipped.hue},90%,72%)">${equipped.name}</b>`;
     if(equipped.elem){ const h=elemHsl(equipped.elem), nm=ELEMENTS[equipped.elem].tiers[equipped.elemTier];
-      s+=` <b style="color:hsl(${h},90%,${ELEMENTS[equipped.elem].light+8}%)">[${nm}${equipped.elemTier<2?" "+equipped.elemCount+"/3":""}]</b>`; }
-    el.innerHTML="장착: "+s; updateEffects();
+      s+=` <b style="color:hsl(${h},90%,${ELEMENTS[equipped.elem].light+8}%)">[${nm}]</b>`; }
+    el.innerHTML="장착: "+s; updateEffects(); updateGauge();
+  }
+  function updateGauge(){
+    const el=document.getElementById("evogauge");
+    if(!equipped||!equipped.elem){ el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    const h=elemHsl(equipped.elem), E=ELEMENTS[equipped.elem], nm=E.tiers[equipped.elemTier];
+    if(equipped.elemTier>=2){ el.innerHTML=`<span style="color:hsl(${h},95%,72%)">★ ${nm} · 최종 진화 달성</span>`; return; }
+    const need=2, cur=equipped.elemCount, next=E.tiers[equipped.elemTier+1];
+    let pips=""; for(let i=0;i<need;i++) pips+=`<span class="pip" style="background:${i<cur?`hsl(${h},90%,58%)`:"rgba(255,255,255,.12)"};box-shadow:${i<cur?`0 0 8px hsl(${h},90%,55%)`:"none"}"></span>`;
+    el.innerHTML=`진화 게이지 <span style="color:hsl(${h},90%,74%)">${nm}</span> ${pips} <span style="opacity:.65">${cur}/${need} → ${next}</span>`;
   }
   function updateEffects(){
     const el=document.getElementById("effects");
@@ -512,7 +538,7 @@
     const eh=ELEM_NAMES.map(e=>{const E=ELEMENTS[e];
       const rows=E.tiers.map((tn,t)=>`<b style="color:hsl(${E.hue},90%,${E.light+12}%)">${t+1}단 ${tn}</b> — ${tierEffectText(e,t)}`).join("<br/>");
       return `<div class="cat-item"><div class="n" style="color:hsl(${E.hue},90%,${E.light+10}%)">${E.tiers.join(" → ")}</div>
-      <div class="d">${rows}<br/><span style="opacity:.65">※ 같은 원소를 무기에 3번 넣으면 다음 단계로 진화</span></div></div>`;}).join("");
+      <div class="d">${rows}<br/><span style="opacity:.65">※ 같은 원소를 무기에 2번 넣으면 다음 단계로 진화</span></div></div>`;}).join("");
     const ah=ADJ_NAMES.map(n=>`<div class="cat-item"><div class="n" style="color:#c4ccff">${n}</div><div class="d">${adjHint(ADJ[n])}</div></div>`).join("");
     document.getElementById("catBody").innerHTML=
       `<div class="cat-sec"><h3 style="color:var(--neon)">무기 (장착·자동공격)</h3><div class="cat-grid">${wh}</div></div>
@@ -538,7 +564,7 @@
     document.getElementById("finalScore").textContent=score;
     document.getElementById("finalLevel").textContent=level;
     document.getElementById("overStats").textContent=`처치 ${killCount} · 진화 ${evolveMade} · 무기교체 ${weaponSwitch}`;
-    ["inputBar","cards","hint","equip","effects","pending"].forEach(id=>document.getElementById(id).classList.add("hidden"));
+    ["inputBar","cards","hint","equip","effects","pending","evogauge"].forEach(id=>document.getElementById(id).classList.add("hidden"));
     document.getElementById("overScreen").classList.remove("hidden");
   }
   document.getElementById("startBtn").addEventListener("click",startGame);
