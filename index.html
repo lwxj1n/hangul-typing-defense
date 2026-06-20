@@ -152,8 +152,9 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="2.0";
+  const VERSION="2.1";
   const CHANGELOG=[
+    {v:"2.1", items:["웨이브 배너를 'LEVEL N'만 표시(부제 제거)","보호막이 관통도 흡수 — 이제 관통 무기도 보호막을 못 뚫고, 막을 깨야 본체 타격","레벨이 오를수록 적이 동시에 여러 마리씩 등장(웨이브 수에 비례)"]},
     {v:"2.0", items:["[메이저] 적 타입 6종 도입 — 그런트/돌격병(빠름)/강철 거인(탱커)/분열체(죽으면 조각 3개)/보호막(관통으로만 실드 무시)/보스","웨이브(레벨) 시스템 — 레벨마다 정해진 수의 적, 전멸하면 3초 휴식 후 다음 레벨","속도는 타입별 고정(레벨 무관), 난이도는 스폰 수·빈도로 상승","10레벨마다 보스(레벨 높을수록 강함)","레벨 전환 시 LEVEL N 배너 연출 + 카운트다운","모든 적 체력 ×3"]},
     {v:"1.8", items:["적은 아래로만 이동하도록 되돌림(좌우 이동 제거)"]},
     {v:"1.7", items:["예측 조준 도입 — 느린 무기도 떨어지는 적의 경로를 미리 계산해 명중. 게임오버는 '못 맞춰서'가 아니라 '딜이 부족해 적이 넘어와서' 발생","명중 판정 보정(빠른 투사체 관통 방지)"]},
@@ -428,7 +429,8 @@
   function hitEnemy(p,e){
     if(p.hitSet.has(e)) return; p.hitSet.add(e);
     let dmg=p.dmg; if(e.wet&&p.effect==="chain") dmg*=2;
-    if(e.shield>0 && !(p.pierce>0)){ e.shield-=dmg; fx(e.x,e.y,"_",0,4,"hit",190); if(e.shield<0){ rawDamage(e,-e.shield); e.shield=0; } }
+    const hadShield=e.shield>0;
+    if(hadShield){ e.shield-=dmg; fx(e.x,e.y,"_",0,5,"hit",190); if(e.shield<0){ rawDamage(e,-e.shield); e.shield=0; } }
     else rawDamage(e,dmg);
     if(p.effect) applyEffect(e,p.effect,p.tier);
     fx(e.x,e.y,p.elem||"_",p.tier,8+p.tier*4,"hit",p.elem?elemHsl(p.elem):p.wHue);
@@ -437,7 +439,9 @@
     if(p.aoe>0){ for(const o of alive()){ if(o===e)continue;
         if(Math.hypot(o.x-e.x,o.y-e.y)<=p.aoe+o.r){ rawDamage(o,Math.max(0.5,p.dmg*0.6)); if(p.effect)applyEffect(o,p.effect,p.tier);} }
       fx(e.x,e.y,p.elem||"_",p.tier,16+p.tier*8,"aoe",p.elem?elemHsl(p.elem):p.wHue); }
-    if(p.pierce>0){ p.pierce--; if(p.homing)p.target=null; } else p.dead=true;
+    if(hadShield){ p.dead=true; }              // 보호막이 투사체(관통 포함)를 흡수
+    else if(p.pierce>0){ p.pierce--; if(p.homing)p.target=null; }
+    else p.dead=true;
   }
   function fx(x,y,elemName,tier,n,mode,hue){
     const key=ELEMENTS[elemName]?ELEMENTS[elemName].key:null; n=Math.round(n*(1+tier*0.5));
@@ -470,7 +474,8 @@
     const T=now();
     // 웨이브(레벨) 진행: 정해진 수 스폰 → 전멸하면 3초 휴식 → 다음 레벨
     if(phase==="spawning"){
-      if(waveSpawned<waveTotal){ spawnTimer+=dt*1000; if(spawnTimer>=spawnInterval){ spawnTimer=0; spawnOne(); waveSpawned++; } }
+      if(waveSpawned<waveTotal){ spawnTimer+=dt*1000; if(spawnTimer>=spawnInterval){ spawnTimer=0;
+        const batch=Math.max(1,Math.ceil(waveTotal/8)); for(let b=0;b<batch&&waveSpawned<waveTotal;b++){ spawnOne(); waveSpawned++; } } }
       else if(alive().length===0){ phase="resting"; restUntil=T+3000; const nx=level+1;
         levelBanner={txt:(nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx), hue:(nx%10===0?330:120), until:restUntil}; }
     } else if(phase==="resting"){ if(T>=restUntil) startLevel(level+1); }
@@ -532,9 +537,7 @@
       ctx.fillText(flashMsg.txt,W/2,H*0.4); ctx.restore(); }
     if(levelBanner){ const left=(levelBanner.until-T); const a=Math.min(1,left/500); ctx.save(); ctx.globalAlpha=Math.max(0.2,Math.min(1,a));
       ctx.font="800 36px Pretendard,system-ui,sans-serif"; ctx.textAlign="center"; ctx.fillStyle=`hsl(${levelBanner.hue},90%,72%)`;
-      ctx.shadowColor=`hsl(${levelBanner.hue},90%,60%)`; ctx.shadowBlur=24; ctx.fillText(levelBanner.txt,W/2,H*0.26);
-      if(phase==="resting"){ ctx.font="600 14px Pretendard,system-ui,sans-serif"; ctx.fillStyle=`hsl(${levelBanner.hue},80%,75%)`; ctx.shadowBlur=10;
-        ctx.fillText("다음 웨이브 준비… "+Math.ceil(left/1000)+"s", W/2, H*0.26+30); } ctx.restore(); }
+      ctx.shadowColor=`hsl(${levelBanner.hue},90%,60%)`; ctx.shadowBlur=24; ctx.fillText(levelBanner.txt,W/2,H*0.26); ctx.restore(); }
     ctx.restore();
     if(flashScreen>0){ ctx.save(); ctx.globalAlpha=flashScreen*0.35; ctx.fillStyle=`hsl(${flashHue},90%,60%)`; ctx.fillRect(0,0,W,H); ctx.restore(); }
   }
