@@ -164,8 +164,9 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="2.2";
+  const VERSION="2.3";
   const CHANGELOG=[
+    {v:"2.3", items:["디자인 2단계 — 적을 프로 게임 아이콘으로 교체(임프·박쥐·바위골렘·크리스탈·갑충·왕관해골)","포대가 장착 무기 아이콘으로 표시","무기별 투사체 모양 차별화(화살·단검·탄환·예광탄·창·도끼)","아이콘은 game-icons.net(Iconify CDN)에서 색 입혀 사용 · CC BY 3.0"]},
     {v:"2.2", items:["디자인 개편 1단계 — 네온 톤을 걷어내고 차분·세련된 프리미엄 UI로","고급 한글 폰트(Pretendard) 적용","카드·HUD·버튼·입력창·도감 전면 리스타일(깔끔한 패널 + 단색 강조)","배경 그리드·바닥 라인 톤다운(은은하게)"]},
     {v:"2.1", items:["웨이브 배너를 'LEVEL N'만 표시(부제 제거)","보호막이 관통도 흡수 — 이제 관통 무기도 보호막을 못 뚫고, 막을 깨야 본체 타격","레벨이 오를수록 적이 동시에 여러 마리씩 등장(웨이브 수에 비례)"]},
     {v:"2.0", items:["[메이저] 적 타입 6종 도입 — 그런트/돌격병(빠름)/강철 거인(탱커)/분열체(죽으면 조각 3개)/보호막(관통으로만 실드 무시)/보스","웨이브(레벨) 시스템 — 레벨마다 정해진 수의 적, 전멸하면 3초 휴식 후 다음 레벨","속도는 타입별 고정(레벨 무관), 난이도는 스폰 수·빈도로 상승","10레벨마다 보스(레벨 높을수록 강함)","레벨 전환 시 LEVEL N 배너 연출 + 카운트다운","모든 적 체력 ×3"]},
@@ -186,7 +187,7 @@
   const WEAPONS = {
     "단검":   {dmg:3,   interval:280,  projSpeed:820,  pierce:0, aoe:0,  scatter:false, snipeTop:false, shape:"dagger", hue:190, hint:"빠른연사·단일"},
     "권총":   {dmg:5,   interval:540,  projSpeed:760,  pierce:0, aoe:0,  scatter:false, snipeTop:false, shape:"bullet", hue:200, hint:"균형·단일"},
-    "기관총": {dmg:0.5, interval:360,  projSpeed:700,  pierce:0, aoe:0,  scatter:true,  snipeTop:false, shape:"bullet", hue:170, hint:"분산·약함"},
+    "기관총": {dmg:0.5, interval:360,  projSpeed:700,  pierce:0, aoe:0,  scatter:true,  snipeTop:false, shape:"tracer", hue:170, hint:"분산·약함"},
     "활":     {dmg:10,  interval:880,  projSpeed:1300, pierce:0, aoe:0,  scatter:false, snipeTop:false, shape:"arrow",  hue:95,  hint:"저격·맨아래적"},
     "창":     {dmg:6,   interval:600,  projSpeed:760,  pierce:2, aoe:0,  scatter:false, snipeTop:false, shape:"spear",  hue:160, hint:"관통 라인"},
     "도끼":   {dmg:18,  interval:1300, projSpeed:720,  pierce:0, aoe:80, scatter:false, snipeTop:false, shape:"axe",    hue:25,  hint:"광역·강타"},
@@ -228,6 +229,19 @@
     mini:    {key:"mini",    name:"조각",     speed:95,  hp:3,  r:11, shape:"diamond",  hue:280, sat:100, minLevel:99, weight:0},
   };
   const BOSS = {key:"boss", name:"보스", speed:22, r:60, shape:"hex", hue:330, sat:100};
+
+  // ===== 스프라이트(게임아이콘, Iconify CDN에서 색 입혀 로드) =====
+  const ENEMY_ICON={grunt:"imp",rusher:"bat",tank:"rock-golem",splitter:"crystal-cluster",shield:"beetle-shell",boss:"crowned-skull",mini:"crystal-shine"};
+  const WEAPON_ICON={"단검":"plain-dagger","권총":"pistol-gun","기관총":"machine-gun","활":"bow-arrow","창":"barbed-spear","도끼":"battle-axe"};
+  const _spriteCache={};
+  function sprite(name,color){ const key=name+"|"+color; let im=_spriteCache[key];
+    if(im===undefined){ im=new Image(); im.decoding="async"; im.src="https://api.iconify.design/game-icons:"+name+".svg?color="+encodeURIComponent(color); _spriteCache[key]=im; }
+    return (im&&im.complete&&im.naturalWidth)?im:null; }
+  function drawSprite(name,color,cx,cy,size){ const im=sprite(name,color); if(!im)return false; ctx.drawImage(im,cx-size/2,cy-size/2,size,size); return true; }
+  function preloadSprites(){ for(const k in ENEMY_ICON){ sprite(ENEMY_ICON[k],"#cfd6e6"); } for(const k in WEAPON_ICON){ sprite(WEAPON_ICON[k],"#cfd6e6"); } }
+  function hslHex(h,s,l){ s/=100; l/=100; const a=s*Math.min(l,1-l); const k=n=>(n+h/30)%12;
+    const f=n=>{ const c=l-a*Math.max(-1,Math.min(k(n)-3,9-k(n),1)); return Math.round(255*c).toString(16).padStart(2,"0"); };
+    return "#"+f(0)+f(8)+f(4); }
 
   // ===== 캔버스 =====
   const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
@@ -559,26 +573,15 @@
   }
   function drawTurret(cx,cy){
     const name=equipped?equipped.name:null;
-    const hue=equipped?(equipped.elem?elemHsl(equipped.elem):equipped.hue):190;
-    ctx.save(); ctx.translate(cx,cy);
-    ctx.shadowColor=`hsl(${hue},100%,60%)`; ctx.shadowBlur=14;
-    ctx.fillStyle=`hsl(${hue},90%,62%)`; ctx.strokeStyle=`hsl(${hue},90%,62%)`; ctx.lineWidth=3; ctx.lineCap="round"; ctx.lineJoin="round";
-    if(!name){ ctx.beginPath(); ctx.moveTo(-15,14); ctx.lineTo(15,14); ctx.lineTo(0,-15); ctx.closePath(); ctx.fill(); }
-    else if(name==="단검"){ ctx.beginPath(); ctx.moveTo(0,-20); ctx.lineTo(5,2); ctx.lineTo(-5,2); ctx.closePath(); ctx.fill();
-      ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(-9,4); ctx.lineTo(9,4); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(0,12); ctx.stroke(); }
-    else if(name==="권총"){ ctx.beginPath(); ctx.rect(-4,-18,8,16); ctx.fill(); // 총신 위
-      ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(8,-2); ctx.lineTo(6,12); ctx.lineTo(-4,8); ctx.closePath(); ctx.fill(); }
-    else if(name==="기관총"){ ctx.beginPath(); ctx.rect(-3,-22,6,20); ctx.fill();
-      ctx.beginPath(); ctx.rect(-8,-4,16,8); ctx.fill(); ctx.beginPath(); ctx.rect(-2,4,4,12); ctx.fill(); }
-    else if(name==="활"){ ctx.lineWidth=3.5; ctx.beginPath(); ctx.arc(2,0,16,Math.PI*0.6,Math.PI*1.4); ctx.stroke();
-      ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(2+16*Math.cos(Math.PI*0.6),16*Math.sin(Math.PI*0.6)); ctx.lineTo(2+16*Math.cos(Math.PI*1.4),16*Math.sin(Math.PI*1.4)); ctx.stroke();
-      ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(14,0); ctx.stroke(); }
-    else if(name==="창"){ ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(0,16); ctx.lineTo(0,-12); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0,-22); ctx.lineTo(5,-10); ctx.lineTo(-5,-10); ctx.closePath(); ctx.fill(); }
-    else if(name==="도끼"){ ctx.lineWidth=3.5; ctx.beginPath(); ctx.moveTo(0,16); ctx.lineTo(0,-16); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0,-16); ctx.quadraticCurveTo(18,-14,14,-2); ctx.quadraticCurveTo(6,-6,0,-6); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(0,-16); ctx.quadraticCurveTo(-18,-14,-14,-2); ctx.quadraticCurveTo(-6,-6,0,-6); ctx.closePath(); ctx.fill(); }
-    ctx.restore();
+    const hue=equipped?(equipped.elem?elemHsl(equipped.elem):equipped.hue):214;
+    const sat=equipped&&!equipped.elem?80:88;
+    // 베이스 받침
+    ctx.save(); ctx.fillStyle="rgba(255,255,255,.06)"; ctx.strokeStyle="rgba(255,255,255,.14)"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy+4,22,Math.PI,0); ctx.lineTo(cx+22,cy+12); ctx.lineTo(cx-22,cy+12); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    if(name && drawSprite(WEAPON_ICON[name], hslHex(hue,sat,66), cx, cy-6, 40)) return;
+    // 폴백(무기 없음/로딩 중): 심플 포대
+    ctx.save(); ctx.translate(cx,cy); ctx.fillStyle=`hsl(${hue},${sat}%,62%)`; ctx.shadowColor=`hsl(${hue},${sat}%,60%)`; ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.moveTo(-13,12); ctx.lineTo(13,12); ctx.lineTo(0,-14); ctx.closePath(); ctx.fill(); ctx.restore();
   }
   function drawRing(rg){ if(rg.age<0)return; const a=Math.max(0,1-rg.age/rg.life);
     ctx.save(); ctx.globalAlpha=a*0.85; ctx.strokeStyle=`hsl(${rg.hue},95%,66%)`; ctx.lineWidth=2+5*a;
@@ -587,21 +590,35 @@
     const seg=6,dx=(b.x2-b.x1)/seg,dy=(b.y2-b.y1)/seg; ctx.beginPath(); ctx.moveTo(b.x1,b.y1);
     for(let i=1;i<seg;i++) ctx.lineTo(b.x1+dx*i+rand(-8,8),b.y1+dy*i+rand(-8,8)); ctx.lineTo(b.x2,b.y2); ctx.stroke(); ctx.restore(); }
   function drawProjectile(p){
-    const h=p.elem?elemHsl(p.elem):p.wHue, lt=p.elem?ELEMENTS[p.elem].light:65, scale=1+p.tier*0.45, S=scale;
-    if(p.tier===2){ ctx.save(); ctx.globalAlpha=0.28+0.22*Math.sin(now()/100); ctx.fillStyle=`hsl(${h},100%,${lt}%)`;
-      ctx.shadowColor=`hsl(${h},100%,${lt}%)`; ctx.shadowBlur=28; ctx.beginPath(); ctx.arc(p.x,p.y,14*scale,0,Math.PI*2); ctx.fill(); ctx.restore(); }
-    ctx.save(); ctx.strokeStyle=`hsla(${h},95%,${lt}%,.45)`; ctx.lineWidth=(2.5+p.tier*1.5)*scale;
-    ctx.beginPath(); p.trail.forEach((t,i)=>i?ctx.lineTo(t.x,t.y):ctx.moveTo(t.x,t.y)); ctx.stroke(); ctx.restore();
+    const h=p.elem?elemHsl(p.elem):p.wHue, lt=p.elem?ELEMENTS[p.elem].light:62, S=1+p.tier*0.4;
+    const col=`hsl(${h},78%,${lt}%)`, core=`hsl(${h},90%,${Math.min(92,lt+24)}%)`, edge=`hsl(${h},66%,${Math.max(34,lt-14)}%)`;
+    // 꼬리(테이퍼)
+    if(p.trail.length>1){ ctx.save(); ctx.lineCap="round";
+      for(let i=1;i<p.trail.length;i++){ const a=i/p.trail.length; ctx.strokeStyle=`hsla(${h},78%,${lt}%,${a*0.32})`; ctx.lineWidth=(1+a*3)*S;
+        ctx.beginPath(); ctx.moveTo(p.trail[i-1].x,p.trail[i-1].y); ctx.lineTo(p.trail[i].x,p.trail[i].y); ctx.stroke(); } ctx.restore(); }
     ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.ang);
-    ctx.shadowColor=`hsl(${h},100%,${lt}%)`; ctx.shadowBlur=12+p.tier*8;
-    ctx.fillStyle=`hsl(${h},100%,${lt+6}%)`; ctx.strokeStyle=`hsl(${h},100%,${lt}%)`; ctx.lineWidth=2*scale;
-    if(p.shape==="arrow"){ ctx.beginPath(); ctx.moveTo(12*S,0); ctx.lineTo(-8*S,4*S); ctx.lineTo(-4*S,0); ctx.lineTo(-8*S,-4*S); ctx.closePath(); ctx.fill(); }
-    else if(p.shape==="dagger"){ ctx.beginPath(); ctx.moveTo(9*S,0); ctx.lineTo(-5*S,3*S); ctx.lineTo(-5*S,-3*S); ctx.closePath(); ctx.fill(); }
-    else if(p.shape==="bullet"){ ctx.beginPath(); ctx.ellipse(0,0,7*S,3.2*S,0,0,Math.PI*2); ctx.fill(); }
-    else if(p.shape==="spear"){ ctx.beginPath(); ctx.moveTo(16*S,0); ctx.lineTo(6*S,2.5*S); ctx.lineTo(-14*S,1.2*S); ctx.lineTo(-14*S,-1.2*S); ctx.lineTo(6*S,-2.5*S); ctx.closePath(); ctx.fill(); }
-    else if(p.shape==="axe"){ ctx.rotate(p.spin); ctx.beginPath(); ctx.arc(0,0,8*S,-0.9,0.9); ctx.lineTo(-3*S,0); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.arc(0,0,8*S,Math.PI-0.9,Math.PI+0.9); ctx.lineTo(3*S,0); ctx.closePath(); ctx.fill(); }
-    else { ctx.beginPath(); ctx.arc(0,0,5*S,0,Math.PI*2); ctx.fill(); }
+    ctx.shadowColor=col; ctx.shadowBlur=p.tier===2?16:7;
+    ctx.fillStyle=col; ctx.strokeStyle=col; ctx.lineCap="round"; ctx.lineJoin="round";
+    if(p.shape==="arrow"){            // 활: 샤프트+촉+깃
+      ctx.lineWidth=2*S; ctx.beginPath(); ctx.moveTo(-12*S,0); ctx.lineTo(6*S,0); ctx.stroke();
+      ctx.fillStyle=core; ctx.beginPath(); ctx.moveTo(14*S,0); ctx.lineTo(4*S,4*S); ctx.lineTo(4*S,-4*S); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle=col; ctx.lineWidth=1.4*S; ctx.beginPath(); ctx.moveTo(-12*S,0); ctx.lineTo(-15*S,3.4*S); ctx.moveTo(-12*S,0); ctx.lineTo(-15*S,-3.4*S); ctx.stroke(); }
+    else if(p.shape==="dagger"){      // 단검: 잎사귀형 날
+      ctx.beginPath(); ctx.moveTo(11*S,0); ctx.quadraticCurveTo(0,3.4*S,-7*S,2*S); ctx.lineTo(-7*S,-2*S); ctx.quadraticCurveTo(0,-3.4*S,11*S,0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle=core; ctx.beginPath(); ctx.moveTo(11*S,0); ctx.lineTo(1*S,1.4*S); ctx.lineTo(1*S,-1.4*S); ctx.closePath(); ctx.fill(); }
+    else if(p.shape==="bullet"){      // 권총: 탄피+금속 탄두
+      ctx.fillStyle=edge; ctx.beginPath(); ctx.ellipse(-1.5*S,0,5.5*S,3.2*S,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=core; ctx.beginPath(); ctx.moveTo(8*S,0); ctx.quadraticCurveTo(3.5*S,3.2*S,2*S,3*S); ctx.lineTo(2*S,-3*S); ctx.quadraticCurveTo(3.5*S,-3.2*S,8*S,0); ctx.closePath(); ctx.fill(); }
+    else if(p.shape==="tracer"){      // 기관총: 가는 예광탄
+      ctx.strokeStyle=core; ctx.lineWidth=2.6*S; ctx.beginPath(); ctx.moveTo(-7*S,0); ctx.lineTo(7*S,0); ctx.stroke(); }
+    else if(p.shape==="spear"){       // 창: 긴 샤프트+날
+      ctx.strokeStyle=edge; ctx.lineWidth=2.4*S; ctx.beginPath(); ctx.moveTo(-16*S,0); ctx.lineTo(5*S,0); ctx.stroke();
+      ctx.fillStyle=core; ctx.beginPath(); ctx.moveTo(17*S,0); ctx.lineTo(4*S,3*S); ctx.lineTo(4*S,-3*S); ctx.closePath(); ctx.fill(); }
+    else if(p.shape==="axe"){         // 도끼: 회전하는 양날
+      ctx.rotate(p.spin); ctx.strokeStyle=edge; ctx.lineWidth=2.6*S; ctx.beginPath(); ctx.moveTo(0,-9*S); ctx.lineTo(0,9*S); ctx.stroke();
+      ctx.fillStyle=core; ctx.beginPath(); ctx.arc(0,-5*S,6.5*S,Math.PI*0.18,Math.PI*0.82); ctx.lineTo(0,-1*S); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,5*S,6.5*S,Math.PI*1.18,Math.PI*1.82); ctx.lineTo(0,1*S); ctx.closePath(); ctx.fill(); }
+    else { ctx.fillStyle=core; ctx.beginPath(); ctx.arc(0,0,5*S,0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
   function drawParticle(pt){ const a=1-pt.age/pt.life; ctx.save(); ctx.globalAlpha=Math.max(0,a);
@@ -613,19 +630,19 @@
     else { ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.sz,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
   function drawEnemy(e,T){
     const x=e.x,y=e.y,r=e.r, wob=Math.sin(e.wobble)*2; let glow=e.hue, sat=(e.sat==null?100:e.sat);
-    if(e.freezeUntil>T){glow=188;sat=100;} else if(e.burnUntil>T){glow=10;sat=100;} else if(e.slowUntil>T){glow=200;sat=100;}
-    ctx.save(); ctx.translate(x,y+wob);
-    ctx.shadowColor=`hsl(${glow},${sat}%,60%)`; ctx.shadowBlur=e.isBoss?28:16; ctx.strokeStyle=`hsl(${glow},${sat}%,65%)`;
-    ctx.fillStyle=`hsla(${glow},${sat}%,55%,.15)`; ctx.lineWidth=e.isBoss?4:2.5; ctx.beginPath();
-    const sh=e.shape;
-    if(sh==="triangle"){ ctx.moveTo(0,r); ctx.lineTo(r*.92,-r*.7); ctx.lineTo(-r*.92,-r*.7); ctx.closePath(); }
-    else if(sh==="square"){ ctx.rect(-r*.8,-r*.8,r*1.6,r*1.6); }
-    else if(sh==="diamond"){ ctx.moveTo(0,-r); ctx.lineTo(r,0); ctx.lineTo(0,r); ctx.lineTo(-r,0); ctx.closePath(); }
-    else if(sh==="hex"){ for(let i=0;i<6;i++){ const a=Math.PI/3*i-Math.PI/2,px=Math.cos(a)*r,py=Math.sin(a)*r; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
-    else ctx.arc(0,0,r,0,Math.PI*2);
-    ctx.fill(); ctx.stroke(); ctx.restore();
-    if(e.shield>0){ ctx.save(); const sa=0.35+0.5*(e.shield/(e.maxShield||1)); ctx.strokeStyle=`hsla(190,100%,72%,${sa})`; ctx.lineWidth=2.5;
-      ctx.shadowColor="hsl(190,100%,65%)"; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(x,y+wob,r+6,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+    if(e.freezeUntil>T){glow=190;sat=85;} else if(e.burnUntil>T){glow=14;sat=90;} else if(e.slowUntil>T){glow=205;sat=70;}
+    const cy=y+wob, iconName=ENEMY_ICON[e.type]||ENEMY_ICON.grunt;
+    const iconHex=hslHex(glow,sat,e.isBoss?70:66), softFill=`hsla(${glow},${sat}%,55%,.13)`;
+    // 은은한 받침 + 아이콘
+    ctx.save(); ctx.shadowColor=`hsla(${glow},${sat}%,55%,.6)`; ctx.shadowBlur=e.isBoss?22:10;
+    ctx.fillStyle=softFill; ctx.beginPath(); ctx.arc(x,cy,r*0.96,0,Math.PI*2); ctx.fill(); ctx.restore();
+    const isz=r*2.05;
+    if(!drawSprite(iconName, iconHex, x, cy, isz)){   // 아이콘 로드 전 폴백
+      ctx.save(); ctx.translate(x,cy); ctx.strokeStyle=`hsl(${glow},${sat}%,66%)`; ctx.fillStyle=softFill; ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(0,0,r*0.8,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    if(e.shield>0){ ctx.save(); const sa=0.35+0.5*(e.shield/(e.maxShield||1)); ctx.strokeStyle=`hsla(195,90%,72%,${sa})`; ctx.lineWidth=2.5;
+      ctx.shadowColor="hsl(195,90%,65%)"; ctx.shadowBlur=8; ctx.beginPath(); ctx.arc(x,cy,r+8,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     if(e.freezeUntil>T){ ctx.save(); ctx.strokeStyle="rgba(150,230,255,.9)"; ctx.lineWidth=1.5;
       for(let i=0;i<3;i++){ const a=e.wobble+i*2.1; ctx.beginPath(); ctx.moveTo(x,y+wob); ctx.lineTo(x+Math.cos(a)*r,y+wob+Math.sin(a)*r); ctx.stroke(); } ctx.restore(); }
     if(e.wet&&e.freezeUntil<=T){ ctx.save(); ctx.fillStyle="rgba(90,170,255,.95)"; ctx.beginPath(); ctx.arc(x+r*.55,y+wob-r*.55,3,0,Math.PI*2); ctx.fill(); ctx.restore(); }
@@ -767,7 +784,7 @@
   $("dvLife").addEventListener("click",()=>{ life+=5; updateHUD(); });
   $("dvEvo").addEventListener("click",()=>{ if(equipped&&equipped.elem&&equipped.elemTier<2){ equipped.elemTier=2; equipped.elemCount=0; evolveBurst(equipped.elem,ELEMENTS[equipped.elem].tiers[2]); updateEquip(); renderCards(); } });
   $("dvClear").addEventListener("click",()=>{ for(const e of alive()) rawDamage(e,1e9); });
-  resize();
+  resize(); preloadSprites();
 })();
 </script>
 </body>
