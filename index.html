@@ -88,6 +88,9 @@
   #devbar{position:absolute;right:10px;top:38px;z-index:4;display:flex;flex-direction:column;gap:6px}
   #devbar button{cursor:pointer;font-size:11px;border:1px solid var(--line);background:var(--panel);color:var(--dim);border-radius:9px;padding:6px 10px;font-weight:600}
   #devbar button:hover{background:var(--panel2);color:var(--txt)}
+  #devbar .dvrow{display:flex;gap:4px}
+  #devbar input,#devbar select{font-size:11px;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:8px;padding:5px 7px;outline:none}
+  #dvLvlIn{width:50px}
   .log-item{border-left:2px solid var(--accent);padding:2px 0 5px 12px;margin-bottom:11px}
   .log-item .lv{font-weight:800;font-size:14px;color:var(--txt)}
   .log-item .li{font-size:12px;color:var(--dim);line-height:1.6;margin-top:2px}
@@ -112,9 +115,11 @@
   <div id="devbadge" class="hidden">🛠 DEV</div>
   <div id="devbar" class="hidden">
     <button id="dvInv">무적 OFF</button>
-    <button id="dvLvl">레벨 +10</button>
-    <button id="dvLife">라이프 +5</button>
+    <div class="dvrow"><input id="dvLvlIn" type="number" min="1" value="1" /><button id="dvLvlSet">레벨이동</button></div>
+    <select id="dvWeapon"><option value="">무기 선택</option></select>
+    <select id="dvElem"><option value="">원소 선택</option></select>
     <button id="dvEvo">즉시 진화</button>
+    <button id="dvLife">라이프 +5</button>
     <button id="dvClear">적 일소</button>
   </div>
 
@@ -164,8 +169,9 @@
   const rand=(a,b)=>a+Math.random()*(b-a), randi=(a,b)=>Math.floor(rand(a,b+1)), pick=a=>a[randi(0,a.length-1)];
 
   // ===== 버전 / 업데이트 내역 =====
-  const VERSION="2.3";
+  const VERSION="3.0";
   const CHANGELOG=[
+    {v:"3.0", items:["[메이저] 레벨 10마다 배경 존 변화(초원→동굴→빙결→용암→늪→심연) · 존 전환 시 이름 표시","모든 무기가 가장 아래(임박) 적을 공격 + 포대가 적 방향으로 조준","'정확한' 형용사를 치명타율 증가(+40%, 치명타 2배)로 변경","최종 진화 특성 범위를 '전체 적' → '근처 적'으로 (천뢰·대격변)","개발자 모드: 레벨 직접 이동 + 무기/원소 즉시 장착"]},
     {v:"2.3", items:["디자인 2단계 — 적을 프로 게임 아이콘으로 교체(임프·박쥐·바위골렘·크리스탈·갑충·왕관해골)","포대가 장착 무기 아이콘으로 표시","무기별 투사체 모양 차별화(화살·단검·탄환·예광탄·창·도끼)","아이콘은 game-icons.net(Iconify CDN)에서 색 입혀 사용 · CC BY 3.0"]},
     {v:"2.2", items:["디자인 개편 1단계 — 네온 톤을 걷어내고 차분·세련된 프리미엄 UI로","고급 한글 폰트(Pretendard) 적용","카드·HUD·버튼·입력창·도감 전면 리스타일(깔끔한 패널 + 단색 강조)","배경 그리드·바닥 라인 톤다운(은은하게)"]},
     {v:"2.1", items:["웨이브 배너를 'LEVEL N'만 표시(부제 제거)","보호막이 관통도 흡수 — 이제 관통 무기도 보호막을 못 뚫고, 막을 깨야 본체 타격","레벨이 오를수록 적이 동시에 여러 마리씩 등장(웨이브 수에 비례)"]},
@@ -205,19 +211,30 @@
   const elemHsl=e=>ELEMENTS[e].hue;
   const EFFECT_DESC={burn:"화상(초당 지속피해)",slow:"둔화·빙결",wet:"젖음·넉백(얼음=빙결/번개=2배)",earth:"관통+폭딜(느려짐)",chain:"연쇄·감전"};
 
+  // 레벨 10마다 바뀌는 배경 존(RPG식 여행)
+  const ZONES=[
+    {name:"초원 관문", a:"#121722", b:"#0c0f16", hue:212},
+    {name:"지하 동굴", a:"#1b1510", b:"#100c08", hue:32},
+    {name:"빙결 지대", a:"#0f1822", b:"#0a0f16", hue:196},
+    {name:"용암 심부", a:"#1d1010", b:"#120a09", hue:8},
+    {name:"독성 늪",   a:"#111a10", b:"#0a0f09", hue:120},
+    {name:"공허 심연", a:"#17111f", b:"#0d0a13", hue:280},
+  ];
+  function curZone(){ return ZONES[Math.floor((level-1)/10)%ZONES.length]; }
+
   const ADJ = {
     "강한":   {dmgMul:2.0},
     "빠른":   {fireRateMul:1.6},
     "꿰뚫는": {pierceAdd:3},
     "거대한": {aoeAdd:42,dmgMul:1.2},
     "이중의": {multishot:2},
-    "정확한": {priorityBottom:true},
+    "정확한": {critAdd:0.4},
   };
   const ADJ_NAMES=Object.keys(ADJ);
   const adjHint=m=>{const t=[];
     if(m.dmgMul)t.push(m.dmgMul>=1?"데미지↑":"데미지↓"); if(m.fireRateMul)t.push("연사↑");
     if(m.pierceAdd)t.push("관통+"+m.pierceAdd); if(m.aoeAdd)t.push("광역↑");
-    if(m.multishot)t.push(m.multishot+"연발"); if(m.priorityBottom)t.push("맨아래적"); if(m.homing)t.push("유도"); return t.join(" ");};
+    if(m.multishot)t.push(m.multishot+"연발"); if(m.critAdd)t.push("치명타+"+Math.round(m.critAdd*100)+"%"); if(m.homing)t.push("유도"); return t.join(" ");};
 
   // ===== 적 타입 (속도·체력 고정, 체력은 ×3 적용) =====
   const ENEMY_TYPES = {
@@ -323,12 +340,12 @@
   }
   function playWeapon(c){
     if(!equipped||equipped.name!==c.name) weaponSwitch++;
-    const adj={dmgMul:1,fireRateMul:1,pierceAdd:0,aoeAdd:0,multishot:1,priorityBottom:false,homing:false,labels:[]};
+    const adj={dmgMul:1,fireRateMul:1,pierceAdd:0,aoeAdd:0,multishot:1,critAdd:0,homing:false,labels:[]};
     for(const an of pendingAdj){ const m=ADJ[an];
       if(m.dmgMul)adj.dmgMul*=m.dmgMul; if(m.fireRateMul)adj.fireRateMul*=m.fireRateMul;
       if(m.pierceAdd)adj.pierceAdd+=m.pierceAdd; if(m.aoeAdd)adj.aoeAdd+=m.aoeAdd;
       if(m.multishot)adj.multishot=Math.max(adj.multishot,m.multishot);
-      if(m.priorityBottom)adj.priorityBottom=true; if(m.homing)adj.homing=true; adj.labels.push(an); }
+      if(m.critAdd)adj.critAdd+=m.critAdd; if(m.homing)adj.homing=true; adj.labels.push(an); }
     equipped={name:c.name,...WEAPONS[c.name],adj,elem:null,elemTier:0,elemCount:0};
     pendingAdj=[]; fireTimer=0; updatePending(); updateEquip();
   }
@@ -355,13 +372,12 @@
   function effStats(){
     const w=equipped, a=w.adj;
     let dmgMul=a.dmgMul,fireRateMul=a.fireRateMul,pierce=w.pierce+a.pierceAdd,aoe=w.aoe+a.aoeAdd,
-        multishot=a.multishot,projMul=1,homing=a.homing,top=w.snipeTop;
-    if(a.priorityBottom) top=false;          // '정확한' = 가장 아래 적 (저격 덮어씀)
+        multishot=a.multishot,projMul=1,homing=a.homing,crit=a.critAdd||0;
     let elem=null,effect=null,tier=0;
     if(w.elem){ const E=ELEMENTS[w.elem]; tier=w.elemTier; elem=w.elem; effect=E.effect;
       dmgMul*=E.dmgMul*TIER_DMG[tier]; aoe+=TIER_AOE[tier]; if(effect==="earth"){ pierce+=tier===2?99:1+tier; projMul*=0.7; } }
     return {dmg:Math.max(0.1,w.dmg*dmgMul),interval:w.interval/fireRateMul,projSpeed:w.projSpeed*projMul,
-      pierce,aoe,multishot,top,homing,elem,effect,tier,scatter:w.scatter,shape:w.shape,hue:w.hue};
+      pierce,aoe,multishot,crit,homing,elem,effect,tier,scatter:w.scatter,shape:w.shape,hue:w.hue};
   }
 
   // ===== 적 =====
@@ -402,13 +418,13 @@
   function autoFire(){
     if(!equipped) return; const st=effStats(); if(!alive().length) return;
     const count=Math.max(st.multishot, st.scatter?2:1);
-    const targets=pickTargets(count,st.top), sx=W/2, sy=H*FLOOR+24;
+    const targets=pickTargets(count,false), sx=W/2, sy=H*FLOOR+24;   // 항상 맨아래(임박) 적 우선
     fx(sx,sy,st.elem||"_",st.tier,6,"muzzle",st.hue);
     for(const t of targets){
       const aim=predictAim(sx,sy,t,st.projSpeed);
       const ang=Math.atan2(aim.y-sy,aim.x-sx);
       projectiles.push({x:sx,y:sy,vx:Math.cos(ang)*st.projSpeed,vy:Math.sin(ang)*st.projSpeed,speed:st.projSpeed,
-        target:t,homing:st.homing,dmg:st.dmg,pierce:st.pierce,aoe:st.aoe,elem:st.elem,effect:st.effect,tier:st.tier,
+        target:t,homing:st.homing,dmg:st.dmg,pierce:st.pierce,aoe:st.aoe,elem:st.elem,effect:st.effect,tier:st.tier,critChance:st.crit,
         shape:st.shape,wHue:st.hue,ang,hitSet:new Set(),trail:[],spin:0});
       if(st.effect==="chain") bolts.push({x1:sx,y1:sy,x2:t.x,y2:t.y,until:now()+90,hue:52,w:2+st.tier});
     }
@@ -440,11 +456,11 @@
     if(key==="fire"){            // 겁화: 착탄 대폭발 — 넓은 범위 강한 화상
       for(const o of L){ if(Math.hypot(o.x-e.x,o.y-e.y)<=140){ rawDamage(o,p.dmg*0.9); o.burnUntil=now()+3000; o.burnDps=Math.max(o.burnDps,5); } }
       flashScreen=Math.max(flashScreen,0.5); flashHue=h; shake(11);
-    } else if(key==="thunder"){  // 천뢰: 화면 전체 연쇄 낙뢰
-      let prev=e; for(const o of L){ if(o===e)continue; bolts.push({x1:prev.x,y1:prev.y,x2:o.x,y2:o.y,until:now()+160,hue:52,w:3}); rawDamage(o,p.dmg*0.7); o.stunUntil=now()+350; prev=o; }
-      flashScreen=Math.max(flashScreen,0.75); flashHue=52;
-    } else if(key==="earth"){    // 대격변: 지진 — 모든 적 피해 + 강한 흔들림
-      for(const o of L){ if(o!==e) rawDamage(o,p.dmg*0.45); } shake(18); flashScreen=Math.max(flashScreen,0.4); flashHue=h;
+    } else if(key==="thunder"){  // 천뢰: 근처 적 연쇄 낙뢰
+      let prev=e; for(const o of L){ if(o===e)continue; if(Math.hypot(o.x-e.x,o.y-e.y)>190)continue; bolts.push({x1:prev.x,y1:prev.y,x2:o.x,y2:o.y,until:now()+160,hue:52,w:3}); rawDamage(o,p.dmg*0.7); o.stunUntil=now()+350; prev=o; }
+      flashScreen=Math.max(flashScreen,0.5); flashHue=52;
+    } else if(key==="earth"){    // 대격변: 근처 적 지진 피해 + 강한 흔들림
+      for(const o of L){ if(o!==e && Math.hypot(o.x-e.x,o.y-e.y)<=180) rawDamage(o,p.dmg*0.45); } shake(16); flashScreen=Math.max(flashScreen,0.35); flashHue=h;
     } else if(key==="ice"){      // 절대영도: 주변 전체 빙결
       for(const o of L){ if(Math.hypot(o.x-e.x,o.y-e.y)<=160){ o.freezeUntil=now()+2200; o.wet=false; rawDamage(o,p.dmg*0.5); fx(o.x,o.y,"얼음",2,4,"hit",188);} }
       flashScreen=Math.max(flashScreen,0.35); flashHue=h;
@@ -456,11 +472,13 @@
   function hitEnemy(p,e){
     if(p.hitSet.has(e)) return; p.hitSet.add(e);
     let dmg=p.dmg; if(e.wet&&p.effect==="chain") dmg*=2;
+    let crit=false; if(p.critChance&&Math.random()<p.critChance){ dmg*=2; crit=true; }
     const hadShield=e.shield>0;
     if(hadShield){ e.shield-=dmg; fx(e.x,e.y,"_",0,5,"hit",190); if(e.shield<0){ rawDamage(e,-e.shield); e.shield=0; } }
     else rawDamage(e,dmg);
     if(p.effect) applyEffect(e,p.effect,p.tier);
     fx(e.x,e.y,p.elem||"_",p.tier,8+p.tier*4,"hit",p.elem?elemHsl(p.elem):p.wHue);
+    if(crit){ rings.push({x:e.x,y:e.y,r:e.r*0.5,maxR:e.r+20,hue:48,age:0,life:0.3}); fx(e.x,e.y,"_",1,9,"hit",48); }   // 치명타: 금색 연출
     if(p.tier===2 && !p.specialDone){ p.specialDone=true; tier2Special(p,e); }
     if(p.tier>=1) shake(3+p.tier*2);
     if(p.aoe>0){ for(const o of alive()){ if(o===e)continue;
@@ -504,7 +522,9 @@
       if(waveSpawned<waveTotal){ spawnTimer+=dt*1000; if(spawnTimer>=spawnInterval){ spawnTimer=0;
         const batch=Math.max(1,Math.ceil(waveTotal/8)); for(let b=0;b<batch&&waveSpawned<waveTotal;b++){ spawnOne(); waveSpawned++; } } }
       else if(alive().length===0){ phase="resting"; restUntil=T+3000; const nx=level+1;
-        levelBanner={txt:(nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx), hue:(nx%10===0?353:222), until:restUntil}; }
+        const zn=ZONES[Math.floor((nx-1)/10)%ZONES.length].name, newZone=(nx%10===1);
+        let txt=nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx; if(newZone)txt+="  ·  "+zn;
+        levelBanner={txt, hue:(nx%10===0?353:222), until:restUntil}; }
     } else if(phase==="resting"){ if(T>=restUntil) startLevel(level+1); }
     if(equipped){ const st=effStats(); fireTimer+=dt*1000; if(fireTimer>=st.interval){ fireTimer=0; autoFire(); } }
     const _me=maxElem(); if(_me && Math.random()<0.55) spawnAmbient(_me);
@@ -541,6 +561,10 @@
     ctx.save();
     if(shakeT>T){ const m=shakeMag*((shakeT-T)/260); ctx.translate(rand(-m,m),rand(-m,m)); }
     ctx.clearRect(-20,-20,W+40,H+40);
+    // 존 배경(레벨대별)
+    const Z=curZone();
+    ctx.save(); const bgG=ctx.createLinearGradient(0,0,0,H); bgG.addColorStop(0,Z.a); bgG.addColorStop(1,Z.b); ctx.fillStyle=bgG; ctx.fillRect(0,0,W,H);
+    const zt=ctx.createRadialGradient(W/2,-H*0.1,0,W/2,-H*0.1,H*1.1); zt.addColorStop(0,`hsla(${Z.hue},50%,48%,.12)`); zt.addColorStop(1,"transparent"); ctx.fillStyle=zt; ctx.fillRect(0,0,W,H); ctx.restore();
     const ft=maxElem();
     if(ft){ const h=elemHsl(ft); const g=ctx.createRadialGradient(W/2,H*0.92,0,W/2,H*0.92,H*1.2);
       g.addColorStop(0,`hsla(${h},60%,50%,0.13)`); g.addColorStop(0.7,`hsla(${h},60%,45%,0.045)`); g.addColorStop(1,"transparent");
@@ -578,10 +602,13 @@
     // 베이스 받침
     ctx.save(); ctx.fillStyle="rgba(255,255,255,.06)"; ctx.strokeStyle="rgba(255,255,255,.14)"; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.arc(cx,cy+4,22,Math.PI,0); ctx.lineTo(cx+22,cy+12); ctx.lineTo(cx-22,cy+12); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-    if(name && drawSprite(WEAPON_ICON[name], hslHex(hue,sat,66), cx, cy-6, 40)) return;
-    // 폴백(무기 없음/로딩 중): 심플 포대
-    ctx.save(); ctx.translate(cx,cy); ctx.fillStyle=`hsl(${hue},${sat}%,62%)`; ctx.shadowColor=`hsl(${hue},${sat}%,60%)`; ctx.shadowBlur=10;
-    ctx.beginPath(); ctx.moveTo(-13,12); ctx.lineTo(13,12); ctx.lineTo(0,-14); ctx.closePath(); ctx.fill(); ctx.restore();
+    // 가장 아래(임박) 적 방향으로 무기 아이콘 회전 조준
+    let rot=0; { const l=alive(); if(l.length){ const tg=l.sort((a,b)=>b.y-a.y)[0]; rot=Math.atan2(tg.y-(cy-6),tg.x-cx)+Math.PI/2; } }
+    if(name){ const im=sprite(WEAPON_ICON[name], hslHex(hue,sat,66));
+      if(im){ ctx.save(); ctx.translate(cx,cy-6); ctx.rotate(rot); ctx.shadowColor=`hsl(${hue},${sat}%,60%)`; ctx.shadowBlur=8; ctx.drawImage(im,-20,-20,40,40); ctx.restore(); return; } }
+    // 폴백(무기 없음/로딩 중): 심플 포대(조준 방향)
+    ctx.save(); ctx.translate(cx,cy-2); ctx.rotate(rot); ctx.fillStyle=`hsl(${hue},${sat}%,62%)`; ctx.shadowColor=`hsl(${hue},${sat}%,60%)`; ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.moveTo(-11,12); ctx.lineTo(11,12); ctx.lineTo(0,-15); ctx.closePath(); ctx.fill(); ctx.restore();
   }
   function drawRing(rg){ if(rg.age<0)return; const a=Math.max(0,1-rg.age/rg.life);
     ctx.save(); ctx.globalAlpha=a*0.85; ctx.strokeStyle=`hsl(${rg.hue},95%,66%)`; ctx.lineWidth=2+5*a;
@@ -687,7 +714,7 @@
     if(st.aoe>0) p.push("광역");
     p.push(st.homing?"유도":"직선");
     if(st.scatter) p.push("분산");
-    p.push(st.top?"맨위 적":"맨아래 적");
+    if(st.crit>0) p.push("치명타 "+Math.round(st.crit*100)+"%");
     if(st.elem) p.push(ELEMENTS[st.elem].tiers[st.tier]+"→"+EFFECT_DESC[st.effect]);
     el.innerHTML="효과: "+p.join(" · ");
   }
@@ -704,12 +731,12 @@
     else if(E.effect==="earth") p.push("관통+"+(1+t)+" · 투사체 속도 -30%");
     else if(E.effect==="chain") p.push("인접 "+[1,3,5][t]+"마리 연쇄 + 감전(스턴)");
     if(aoe>0) p.push("착탄 광역 +"+aoe);
-    if(t===2){ const sp={fire:"착탄 시 대폭발(주변 전체 강화상)",thunder:"화면 전체 연쇄 낙뢰",earth:"전체 관통 + 지진(모든 적 피해)",ice:"주변 전체 빙결",water:"주변 적 끌어올림+젖음"}[E.key]; if(sp)p.push("★최종특성: "+sp); }
+    if(t===2){ const sp={fire:"착탄 시 대폭발(근처 적 강화상)",thunder:"근처 적 연쇄 낙뢰",earth:"전체 관통 + 착탄 지진(근처 적 피해)",ice:"근처 적 빙결",water:"근처 적 끌어올림+젖음"}[E.key]; if(sp)p.push("★최종특성: "+sp); }
     return p.join(" · ");
   }
   function buildCatalog(){
     const wh=WEAPON_NAMES.map(n=>{const w=WEAPONS[n];return `<div class="cat-item"><div class="n" style="color:hsl(${w.hue},85%,70%)">${n}</div>
-      <div class="d">데미지 ${w.dmg} · 초당 ${(1000/w.interval).toFixed(1)}발${w.pierce?` · 관통 ${w.pierce}`:""}${w.aoe?" · 광역":""}${w.scatter?" · 분산":""}${w.snipeTop?" · 맨위적":""}<br/>${w.hint}</div></div>`;}).join("");
+      <div class="d">데미지 ${w.dmg} · 초당 ${(1000/w.interval).toFixed(1)}발${w.pierce?` · 관통 ${w.pierce}`:""}${w.aoe?" · 광역":""}${w.scatter?" · 분산":""}<br/>${w.hint}</div></div>`;}).join("");
     const eh=ELEM_NAMES.map(e=>{const E=ELEMENTS[e];
       const rows=E.tiers.map((tn,t)=>`<b style="color:hsl(${E.hue},90%,${E.light+12}%)">${t+1}단 ${tn}</b> — ${tierEffectText(e,t)}`).join("<br/>");
       return `<div class="cat-item"><div class="n" style="color:hsl(${E.hue},90%,${E.light+10}%)">${E.tiers.join(" → ")}</div>
@@ -736,7 +763,7 @@
     document.getElementById("devbadge").classList.toggle("hidden",!devMode);
     document.getElementById("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF");
     typedEl.value="";initCards();startLevel(1);
-    levelBanner={txt:"LEVEL 1",hue:222,until:performance.now()+1800};
+    levelBanner={txt:"LEVEL 1  ·  "+ZONES[0].name,hue:222,until:performance.now()+1800};
     typedEl.focus();lastTs=performance.now();requestAnimationFrame(loop);
   }
   function gameOver(){
@@ -779,8 +806,14 @@
     if(v==="1243"){ devMode=true; $("devpassMsg").textContent="개발자 모드 ON ✓"; $("devpassMsg").style.color="#b6ff3b"; }
     else { $("devpassMsg").textContent="비밀번호 오류"; $("devpassMsg").style.color="#ff6b9d"; }
     $("devpassInput").value=""; } });
+  function devEquip(name){ const adj={dmgMul:1,fireRateMul:1,pierceAdd:0,aoeAdd:0,multishot:1,critAdd:0,homing:false,labels:[]};
+    equipped={name,...WEAPONS[name],adj,elem:null,elemTier:0,elemCount:0}; fireTimer=0; updateEquip(); }
+  WEAPON_NAMES.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; $("dvWeapon").appendChild(o); });
+  ELEM_NAMES.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; $("dvElem").appendChild(o); });
   $("dvInv").addEventListener("click",()=>{ devInvincible=!devInvincible; $("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF"); });
-  $("dvLvl").addEventListener("click",()=>{ enemies=[]; startLevel(level+10); });
+  $("dvLvlSet").addEventListener("click",()=>{ const n=Math.max(1,parseInt($("dvLvlIn").value)||1); enemies=[]; startLevel(n); typedEl.focus(); });
+  $("dvWeapon").addEventListener("change",e=>{ if(e.target.value){ devEquip(e.target.value); e.target.value=""; typedEl.focus(); } });
+  $("dvElem").addEventListener("change",e=>{ const v=e.target.value; if(v){ if(!equipped)devEquip(WEAPON_NAMES[0]); equipped.elem=v; equipped.elemTier=0; equipped.elemCount=1; updateEquip(); renderCards(); e.target.value=""; typedEl.focus(); } });
   $("dvLife").addEventListener("click",()=>{ life+=5; updateHUD(); });
   $("dvEvo").addEventListener("click",()=>{ if(equipped&&equipped.elem&&equipped.elemTier<2){ equipped.elemTier=2; equipped.elemCount=0; evolveBurst(equipped.elem,ELEMENTS[equipped.elem].tiers[2]); updateEquip(); renderCards(); } });
   $("dvClear").addEventListener("click",()=>{ for(const e of alive()) rawDamage(e,1e9); });
