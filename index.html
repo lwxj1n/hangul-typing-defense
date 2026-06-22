@@ -490,7 +490,7 @@
       if(waveSpawned<waveTotal){ spawnTimer+=dt*1000; if(spawnTimer>=spawnInterval){ spawnTimer=0;
         const batch=Math.max(1,Math.ceil(waveTotal/8)); for(let b=0;b<batch&&waveSpawned<waveTotal;b++){ spawnOne(); waveSpawned++; } } }
       else if(alive().length===0){ phase="resting"; restUntil=T+3000; const nx=level+1;
-        levelBanner={txt:(nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx), hue:(nx%10===0?330:120), until:restUntil}; }
+        levelBanner={txt:(nx%10===0?"⚠ LEVEL "+nx+" · 보스":"LEVEL "+nx), hue:(nx%10===0?353:222), until:restUntil}; }
     } else if(phase==="resting"){ if(T>=restUntil) startLevel(level+1); }
     if(equipped){ const st=effStats(); fireTimer+=dt*1000; if(fireTimer>=st.interval){ fireTimer=0; autoFire(); } }
     const _me=maxElem(); if(_me && Math.random()<0.55) spawnAmbient(_me);
@@ -719,7 +719,7 @@
     document.getElementById("devbadge").classList.toggle("hidden",!devMode);
     document.getElementById("dvInv").textContent="무적 "+(devInvincible?"ON":"OFF");
     typedEl.value="";initCards();startLevel(1);
-    levelBanner={txt:"LEVEL 1",hue:120,until:performance.now()+1800};
+    levelBanner={txt:"LEVEL 1",hue:222,until:performance.now()+1800};
     typedEl.focus();lastTs=performance.now();requestAnimationFrame(loop);
   }
   function gameOver(){
